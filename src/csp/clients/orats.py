@@ -5,16 +5,21 @@ wird nicht intern instanziiert, damit Tests ihn per `respx` ersetzen oder per
 `pytest-vcr` aufzeichnen können.
 
 Retry-Policy (PRD FR4 / project-context.md "httpx (API clients)"):
-- 3 Versuche, exponentielles Backoff 1 s / 2 s / 4 s, für 5xx und 429.
+- 3 Versuche, exponentielles Backoff 1 s / 2 s / 4 s, für 5xx, 429 und Transport-Fehler.
 - 4xx löst sofort `ORATSDataError` aus (kein Retry, da idempotent kaputt).
-- Token in der URL wird in jeder Exception-Message und jedem Log durch `<REDACTED>`
-  ersetzt; dazu greift zusätzlich VCR `filter_query_parameters=["token", "apikey"]`
-  an der Cassette-Grenze.
+- Transport-Fehler (`httpx.RequestError` — `ConnectError`, `ReadError`, `ReadTimeout`,
+  `RemoteProtocolError`, `PoolTimeout`, …) werden gleich behandelt wie 5xx; nach
+  drei Versuchen `ORATSDataError(status=-1, …)` (Sentinel "transport failure").
+- Token in der URL und in jedem Body/Header-Echo wird per Regex durch `<REDACTED>`
+  ersetzt (matcht `token=`, `apikey=`, `api_key=`, `api-key=` und `Authorization: Bearer`),
+  bevor er in Exception-Messages oder Logs landet; zusätzlich greift VCR
+  `filter_query_parameters=["token", "apikey"]` an der Cassette-Grenze.
 """
 
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import date
 from typing import Any
 
@@ -30,25 +35,65 @@ RATE_LIMIT_PER_MIN = 1_000
 _MAX_ATTEMPTS = 3
 _RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 _REDACTED = "<REDACTED>"
+_TRANSPORT_FAILURE_STATUS = -1
+"""Sentinel-Status für Transport-Fehler (Connect/Read/Timeout/Pool — kein HTTP-Status)."""
+
+# Query-Param-Wert-Scrubber: matcht token=, apikey=, api_key=, api-key= (case-insensitiv).
+# Variable-width-Lookbehind ist in stdlib `re` nicht erlaubt; daher capture-and-replace
+# über Backreference statt Zero-Width-Assertion.
+_QUERY_PARAM_RE = re.compile(
+    r"([?&](?:token|apikey|api_key|api-key)=)[^&\s#]+",
+    flags=re.IGNORECASE,
+)
+_QUERY_PARAM_REPL = r"\1" + "<REDACTED>"
+# Authorization-Bearer-Header-Scrubber.
+_BEARER_RE = re.compile(r"(?i)(authorization\s*:\s*bearer\s+)\S+")
+
+
+def _redact_text(text: str) -> str:
+    """Ersetzt alle bekannten Secret-Patterns in `text` durch `<REDACTED>`.
+
+    Deckt:
+    - Query-Param-Werte für `token`, `apikey`, `api_key`, `api-key` (case-insensitiv,
+      auch URL-encodiert wie `token=abc%2Bdef`).
+    - `Authorization: Bearer …`-Header in beliebiger Schreibweise.
+
+    Wird vor Aufnahme in `ORATSDataError`-Bodies und vor Loguru-Emission angewandt.
+    """
+    if not text:
+        return text
+    out = _QUERY_PARAM_RE.sub(_QUERY_PARAM_REPL, text)
+    out = _BEARER_RE.sub(r"\1" + _REDACTED, out)
+    return out
 
 
 def _redact_url(url: str, token: str) -> str:
     """Ersetzt das Token im URL-String durch `<REDACTED>`.
 
-    Wird vor jeder Aufnahme in `ORATSDataError`-Messages und Loguru-Logs angewandt.
+    Verwendet einen Regex-Scrubber pro Query-Parameter-Wert (`token=…`, `apikey=…`,
+    `api_key=…`, `api-key=…`) statt eines naiven String-Replace, damit auch
+    URL-encodierte Tokens (`token=abc%2Bdef`) und kurze Tokens (Token = "t") sauber
+    redigiert werden, ohne andere Vorkommen des gleichen Substrings zu zerstören.
+
+    Das `token`-Argument bleibt aus Rückwärtskompatibilität erhalten, wird aber
+    nicht mehr für naive `str.replace`-Fallbacks benutzt — kurze Tokens (z. B. "t")
+    würden sonst in unrelated Substrings (`ticker`, `https`) zerstörerisch matchen.
     Cassette-Schutz greift zusätzlich über VCR `filter_query_parameters`.
     """
-    if not token:
-        return url
-    return url.replace(token, _REDACTED)
+    del token  # nur in der Signatur erhalten; tatsächliche Redaktion über Regex.
+    return _QUERY_PARAM_RE.sub(_QUERY_PARAM_REPL, url)
 
 
 def _put_delta_from_call_delta(call_delta: float) -> float:
     """ORATS `/hist/strikes` liefert nur das Call-Delta; Put-Delta = call - 1.
 
     Put-Delta ist immer ≤ 0; das Pydantic-Modell erzwingt `delta ∈ [-1, 0]`.
+    Wir clampen das Call-Delta vorher in `[-1, 1]`, damit Floating-Point-Edge-Cases
+    (z. B. `delta=1.0000001` bei extremem ITM) nicht das Modell-`ge=-1.0`-Constraint
+    sprengen.
     """
-    return call_delta - 1.0
+    clamped = max(-1.0, min(1.0, call_delta))
+    return clamped - 1.0
 
 
 class OratsClient:
@@ -75,10 +120,12 @@ class OratsClient:
 
     async def cores(self, ticker: str) -> OratsCore:
         """Aktueller `/cores`-Snapshot für einen Ticker."""
+        from csp.exceptions import ORATSEmptyDataError
+
         data = await self._request_with_retry("GET", "/cores", {"ticker": ticker})
         items = data.get("data", [])
         if not items:
-            raise ORATSDataError(
+            raise ORATSEmptyDataError(
                 status=200,
                 body=f"leere data-Liste für ticker={ticker}",
                 url_redacted=f"{self._base_url}/cores?ticker={ticker}&token={_REDACTED}",
@@ -133,16 +180,49 @@ class OratsClient:
         path: str,
         params: dict[str, str],
     ) -> dict[str, Any]:
-        """Issues a request with exponential backoff on 5xx/429; raises immediately on 4xx.
+        """Issues a request with exponential backoff on 5xx/429/transport-errors.
+
+        4xx raises immediately. Transport failures (`httpx.RequestError`) sind die
+        häufigsten produktiven Fehler (Connect-Reset, Read-Timeout, Pool-Erschöpfung)
+        und werden mit dem gleichen 1/2/4 s Backoff behandelt; nach drei Versuchen
+        `ORATSDataError(status=-1, …)`.
 
         Token wird als Query-Parameter angehängt; in jedem Log/Exception-Pfad redigiert.
         """
         url = f"{self._base_url}{path}"
         full_params = {**params, "token": self._token}
         last_exc: ORATSDataError | None = None
+        # Redacted URL ohne Token-Inhalt — Approximation für Transport-Fehler-Pfad,
+        # bei dem `response.request.url` nicht verfügbar ist.
+        redacted_request_url = _redact_text(
+            f"{url}?" + "&".join(f"{k}={v}" for k, v in full_params.items())
+        )
 
         for attempt in range(_MAX_ATTEMPTS):
-            response = await self._client.request(method, url, params=full_params)
+            try:
+                response = await self._client.request(method, url, params=full_params)
+            except httpx.RequestError as exc:
+                msg = _redact_text(str(exc))
+                last_exc = ORATSDataError(
+                    status=_TRANSPORT_FAILURE_STATUS,
+                    body=f"Transport-Fehler: {msg}",
+                    url_redacted=redacted_request_url,
+                )
+                if attempt < _MAX_ATTEMPTS - 1:
+                    delay = float(2**attempt)
+                    logger.warning(
+                        "ORATS Transport-Fehler bei {url} — Versuch {n}/{total}, "
+                        "Backoff {s}s: {msg}",
+                        url=redacted_request_url,
+                        n=attempt + 1,
+                        total=_MAX_ATTEMPTS,
+                        s=delay,
+                        msg=msg,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                raise last_exc from exc
+
             status = response.status_code
             if 200 <= status < 300:
                 payload: dict[str, Any] = response.json()

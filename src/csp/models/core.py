@@ -27,7 +27,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 class OratsCore(BaseModel):
     """Per-Underlying-Kennzahlen aus ORATS /cores oder /hist/cores."""
 
-    model_config = ConfigDict(frozen=True, populate_by_name=True, extra="ignore")
+    model_config = ConfigDict(
+        frozen=True, validate_by_name=True, validate_by_alias=True, extra="ignore"
+    )
 
     ticker: str
     under_price: float = Field(
@@ -67,7 +69,9 @@ class OratsCore(BaseModel):
 class OratsStrike(BaseModel):
     """Per-Strike-Kennzahlen aus ORATS /strikes oder /hist/strikes (Put-Seite)."""
 
-    model_config = ConfigDict(frozen=True, populate_by_name=True, extra="ignore")
+    model_config = ConfigDict(
+        frozen=True, validate_by_name=True, validate_by_alias=True, extra="ignore"
+    )
 
     strike: float
     delta: float = Field(ge=-1.0, le=0.0, description="Put-Delta; muss in [-1, 0] liegen.")

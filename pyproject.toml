@@ -1,7 +1,7 @@
 [project]
 name = "csp"
 version = "0.1.0"
-description = "German Cash-Secured-Put options-trading research library (Pflichtregeln gate slice)"
+description = "German Cash-Secured-Put options-trading research library."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -57,10 +57,12 @@ addopts = [
     "--cov=csp",
     "--cov-report=term-missing",
     "--cov-fail-under=80",
+    "-m",
+    "not recording",
 ]
 markers = [
     "now_regression: NOW-78 (2026-04-24) regression anchor",
-    "recording: live ORATS HTTP — only run with --record-mode=once",
+    "recording: live ORATS HTTP — opt-in via `pytest -m recording --vcr-record=once`",
 ]
 
 [tool.coverage.run]

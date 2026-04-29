@@ -37,12 +37,19 @@ HIST_STRIKES_CASSETTE = CASSETTE_DIR / "hist_strikes_NOW_20260424.yaml"
 
 
 def _decode_first_response_json(cassette_path: Path) -> Any:
-    """Liest VCR-YAML, holt den Body der ersten Interaktion, gunzipt und parst JSON."""
+    """Liest VCR-YAML, holt den Body der ersten Interaktion, gunzipt und parst JSON.
+
+    `Content-Encoding` kann je nach VCR-Version bzw. Vendor entweder als
+    `list[str]` (kanonische VCR-Form, z. B. `["gzip"]`) oder als plain `str`
+    (z. B. `"gzip"`) abgelegt sein — wir behandeln beide Formen robust.
+    """
     raw = yaml.safe_load(cassette_path.read_text())
     interaction = raw["interactions"][0]
     body_bytes = interaction["response"]["body"]["string"]
-    encoding = interaction["response"]["headers"].get("Content-Encoding", [])
-    if "gzip" in encoding:
+    enc_raw = interaction["response"]["headers"].get("Content-Encoding", [])
+    enc_list = enc_raw if isinstance(enc_raw, list) else [enc_raw]
+    is_gzip = any("gzip" in (e or "") for e in enc_list)
+    if is_gzip:
         body_bytes = gzip.decompress(body_bytes)
     return json.loads(body_bytes)
 

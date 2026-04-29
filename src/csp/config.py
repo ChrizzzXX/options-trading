@@ -1,4 +1,9 @@
-"""Settings-Loader für Pflichtregeln-Schwellwerte und Universum (PRD FR12)."""
+"""Settings-Loader für Pflichtregeln-Schwellwerte und Universum (PRD FR12).
+
+Liest TOML-basierte Regelschwellen plus Vendor-Credentials aus `.env`. ORATS-Token
+und Basis-URL werden hier gebündelt — Caller (z. B. `orats_health_check`) lesen
+sie via `Settings.load()`, niemals direkt aus `os.environ`.
+"""
 
 from __future__ import annotations
 
@@ -6,12 +11,21 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from csp.exceptions import ConfigError
 
 DEFAULT_SETTINGS_PATH = Path("config/settings.toml")
+DEFAULT_ORATS_BASE_URL = "https://api.orats.io/datav2"
 
 
 class RuleThresholds(BaseModel):
@@ -81,16 +95,36 @@ class UniverseConfig(BaseModel):
 
 
 class Settings(BaseSettings):
-    """Globale Konfiguration; lädt `config/settings.toml` per Klassenmethode."""
+    """Globale Konfiguration; lädt TOML (Regeln) + `.env` (Vendor-Secrets).
 
-    model_config = SettingsConfigDict(extra="forbid")
+    `orats_token` und `orats_base_url` kommen über `pydantic-settings` aus `.env`
+    bzw. der Umgebung. `orats_token` ist ein `SecretStr` — das Token wird in
+    `repr(settings)` als `'**********'` ausgegeben, niemals im Klartext.
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     rules: RuleThresholds
     universe: UniverseConfig
+    orats_token: SecretStr = Field(
+        default=SecretStr(""),
+        description="ORATS-API-Token aus .env. Leer = ConfigError beim Vendor-Aufruf.",
+    )
+    orats_base_url: str = Field(
+        default=DEFAULT_ORATS_BASE_URL,
+        description="ORATS-Datav2-Basis-URL (override via ORATS_BASE_URL env).",
+    )
 
     @classmethod
     def load(cls, path: Path | str = DEFAULT_SETTINGS_PATH) -> Settings:
-        """Lädt Settings aus einer TOML-Datei. Erhöht ConfigError bei Fehlern.
+        """Lädt Settings aus einer TOML-Datei + .env. Erhöht ConfigError bei Fehlern.
+
+        TOML liefert `rules`/`universe`; `.env` liefert `orats_token`/`orats_base_url`
+        (über pydantic-settings). Kein direkter `os.environ`-Zugriff in Callern.
 
         Fängt nur erwartete Fehlertypen (TOML, Validation, OS); KeyboardInterrupt und
         unerwartete Bugs müssen propagieren statt verschluckt zu werden.
@@ -107,6 +141,6 @@ class Settings(BaseSettings):
             raise ConfigError(f"Settings-Datei {toml_path} nicht lesbar: {exc}") from exc
 
         try:
-            return cls.model_validate(raw)
+            return cls(**raw)
         except ValidationError as exc:
             raise ConfigError(f"Settings-Datei {toml_path} ungültig: {exc}") from exc

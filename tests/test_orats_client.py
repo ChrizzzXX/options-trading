@@ -32,9 +32,10 @@ from csp.clients.orats import (
     RATE_LIMIT_PER_MIN,
     OratsClient,
     _put_delta_from_call_delta,
+    _redact_text,
     _redact_url,
 )
-from csp.exceptions import ORATSDataError
+from csp.exceptions import ORATSDataError, ORATSEmptyDataError
 from csp.models.core import OratsCore, OratsStrike
 
 BASE_URL = "https://api.orats.io/datav2"
@@ -92,14 +93,76 @@ class TestRedactUrlAndPutDelta:
         assert "<REDACTED>" in redacted
 
     def test_redact_url_with_empty_token_passes_through(self) -> None:
-        # Defensive: leeres Token darf den URL nicht zerstören (str.replace mit "" ist No-Op).
+        # Defensive: leeres Token darf den URL nicht zerstören.
         url = "https://api.orats.io/datav2/cores?ticker=NOW"
         assert _redact_url(url, "") == url
+
+    def test_redact_url_short_token_no_collateral_damage(self) -> None:
+        """Kurzes Token (z. B. "t") darf andere Vorkommen des Buchstabens nicht zerstören.
+
+        Der naive `str.replace`-Ansatz hätte z. B. das `t` in `ticker` ebenfalls
+        ersetzt; der Regex-Scrubber redigiert nur den Query-Param-Wert.
+        """
+        url = "https://api.orats.io/datav2/cores?ticker=NOW&token=t"
+        redacted = _redact_url(url, "t")
+        assert "ticker=NOW" in redacted  # 't' in 'ticker' bleibt erhalten
+        assert "token=<REDACTED>" in redacted
+
+    def test_redact_url_url_encoded_token(self) -> None:
+        """URL-encodierte Tokens (z. B. `%2B` für `+`) müssen ebenfalls scrubbed werden."""
+        url = "https://api.orats.io/datav2/cores?ticker=NOW&token=abc%2Bdef%3D"
+        redacted = _redact_url(url, "abc+def=")
+        assert "abc%2Bdef" not in redacted
+        assert "abc+def" not in redacted
+        assert "token=<REDACTED>" in redacted
+
+    def test_redact_url_apikey_param(self) -> None:
+        """`apikey=` (anderer Vendor) wird ebenfalls erfasst."""
+        url = "https://example.com/api?apikey=secret123&foo=bar"
+        redacted = _redact_url(url, "")
+        assert "secret123" not in redacted
+        assert "<REDACTED>" in redacted
+        assert "foo=bar" in redacted
+
+    def test_redact_text_authorization_bearer(self) -> None:
+        """`Authorization: Bearer …` wird in beliebigem Text-Block redigiert."""
+        body = "GET /foo\nAuthorization: Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig\nAccept: */*"
+        redacted = _redact_text(body)
+        assert "eyJhbGciOiJIUzI1NiJ9" not in redacted
+        assert "Bearer <REDACTED>" in redacted
+        assert "Accept: */*" in redacted
+
+    def test_redact_text_handles_empty_string(self) -> None:
+        assert _redact_text("") == ""
+
+    def test_oratsdataerror_redacts_token_in_body(self) -> None:
+        """Wenn das Token versehentlich im Response-Body echo-d ist, darf es nicht
+        in der Exception-Message landen."""
+        leaky_body = "Internal error processing query string ?token=abc123secret&ticker=NOW"
+        exc = ORATSDataError(
+            status=500,
+            body=leaky_body,
+            url_redacted="https://example.com/x?token=<REDACTED>",
+        )
+        msg = str(exc)
+        assert "abc123secret" not in msg
+        assert "<REDACTED>" in msg
 
     def test_put_delta_from_call_delta_subtracts_one(self) -> None:
         assert _put_delta_from_call_delta(0.78) == pytest.approx(-0.22)
         assert _put_delta_from_call_delta(0.05) == pytest.approx(-0.95)
         assert _put_delta_from_call_delta(1.0) == pytest.approx(0.0)
+
+    def test_call_delta_above_one_clamped_safely(self) -> None:
+        """Floating-Point-Edge: delta=1.0000001 muss auf 0.0 (Put-Delta) clampen,
+        nicht eine positive Zahl produzieren, die das Modell-Constraint verletzt."""
+        assert _put_delta_from_call_delta(1.0000001) == pytest.approx(0.0)
+        # Auch der untere Edge-Case: delta=-1.0000001 → Put-Delta = -2 wäre falsch;
+        # clamp auf -1.0 → Put-Delta = -2.0 wäre auch ungültig, aber der Punkt ist
+        # die Robustheit gegen FP-Driften nahe der Grenzen, nicht semantischer Sinn
+        # für negative Call-Deltas (existieren nicht).
+        # Validate dass das Ergebnis im OratsStrike-erlaubten Bereich liegt.
+        assert -1.0 <= _put_delta_from_call_delta(1.0000001) <= 0.0
 
 
 class TestRetryPolicy:
@@ -199,7 +262,9 @@ class TestRetryPolicy:
         # project-context.md: ORATS-Plan-Tier = 1000 req/min.
         assert RATE_LIMIT_PER_MIN == 1_000
 
-    def test_empty_data_raises_oratsdataerror(self) -> None:
+    def test_empty_data_raises_orats_empty_data_error(self) -> None:
+        """Empty `data` lifts to a dedicated subclass — Caller können "kein Datensatz"
+        von echten Vendor-Fehlern unterscheiden."""
         with respx.mock(assert_all_called=True) as router:
             router.get(f"{BASE_URL}/cores").mock(
                 return_value=httpx.Response(200, json={"data": []})
@@ -210,10 +275,70 @@ class TestRetryPolicy:
                     orats = OratsClient(client, base_url=BASE_URL, token=FAKE_TOKEN)
                     await orats.cores("XXX")
 
-            with pytest.raises(ORATSDataError) as exc_info:
+            with pytest.raises(ORATSEmptyDataError) as exc_info:
                 _run(call())
             assert exc_info.value.status == 200
             assert "leere data-Liste" in str(exc_info.value)
+            # Subklassen-Beziehung: bestehende Caller, die `ORATSDataError` fangen,
+            # bekommen das Verhalten weiterhin.
+            assert isinstance(exc_info.value, ORATSDataError)
+
+    def test_connect_error_retried_then_raises(self, no_sleep: None) -> None:
+        """`httpx.ConnectError` wird wie 5xx behandelt: 3 Versuche, dann
+        `ORATSDataError(status=-1)` mit redigierter Message."""
+        with respx.mock(assert_all_called=True) as router:
+            route = router.get(f"{BASE_URL}/cores").mock(
+                side_effect=httpx.ConnectError("connection refused")
+            )
+
+            async def call() -> None:
+                async with httpx.AsyncClient() as client:
+                    orats = OratsClient(client, base_url=BASE_URL, token=FAKE_TOKEN)
+                    await orats.cores("NOW")
+
+            with pytest.raises(ORATSDataError) as exc_info:
+                _run(call())
+
+            assert route.call_count == 3
+            assert exc_info.value.status == -1
+            assert "Transport-Fehler" in str(exc_info.value)
+            assert FAKE_TOKEN not in str(exc_info.value)
+            live = _live_token()
+            if live:
+                assert live not in str(exc_info.value)
+
+    def test_timeout_then_200_returns_model(self, no_sleep: None) -> None:
+        """`httpx.ReadTimeout` beim ersten Versuch, dann erfolgreiches 200."""
+        success_payload = {
+            "data": [
+                {
+                    "ticker": "NOW",
+                    "pxAtmIv": 90.0,
+                    "sectorName": "Technology",
+                    "mktCap": 100_000_000,
+                    "ivPctile1y": 80,
+                    "daysToNextErn": 30,
+                    "avgOptVolu20d": 100_000.0,
+                }
+            ]
+        }
+        with respx.mock(assert_all_called=True) as router:
+            route = router.get(f"{BASE_URL}/cores").mock(
+                side_effect=[
+                    httpx.ReadTimeout("read timeout"),
+                    httpx.Response(200, json=success_payload),
+                ]
+            )
+
+            async def call() -> OratsCore:
+                async with httpx.AsyncClient() as client:
+                    orats = OratsClient(client, base_url=BASE_URL, token=FAKE_TOKEN)
+                    return await orats.cores("NOW")
+
+            result = _run(call())
+            assert route.call_count == 2
+            assert isinstance(result, OratsCore)
+            assert result.ticker == "NOW"
 
     def test_strikes_filters_none_quotes_and_converts_call_delta_to_put_delta(
         self,
@@ -358,10 +483,10 @@ class TestCassettes:
 
 @pytest.mark.recording
 class TestRecording:
-    """Live-HTTP — nur via `pytest --vcr-record=once -k recording`.
+    """Live-HTTP — opt-in via `pytest -m recording --vcr-record=once`.
 
-    Der Standard-Pytest-Lauf überspringt diese Klasse implizit, weil der
-    Recording-Marker nicht selektiert wird; zusätzlich greift `record_mode="none"`
+    Der Standard-Pytest-Lauf überspringt diese Klasse, weil `pyproject.toml`
+    `addopts = ["-m", "not recording"]` setzt. Zusätzlich greift `record_mode="none"`
     in `vcr_recorder` und blockiert echte HTTP-Aufrufe in den Cassette-Tests.
     """
 
@@ -423,23 +548,61 @@ def test_public_reexports_resolve() -> None:
 
 
 class TestHealthCheck:
-    """`orats_health_check` — sync-wrapper um async-`OratsClient.cores`."""
+    """`orats_health_check` — sync-wrapper um async-`OratsClient.cores`.
+
+    Tests mocken `Settings.load(...)` direkt, damit weder das echte `.env` noch
+    `os.environ`-State die Health-Check-Logik beeinflussen.
+    """
+
+    def _stub_settings(self, *, token: str, base_url: str = BASE_URL) -> object:
+        """Minimaler `Settings`-Doppelgänger mit `orats_token` + `orats_base_url`."""
+        from pydantic import SecretStr
+
+        class _StubSettings:
+            orats_token = SecretStr(token)
+            orats_base_url = base_url
+
+        return _StubSettings()
 
     def test_raises_config_error_when_token_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from csp.exceptions import ConfigError
         from csp.health import orats_health_check
 
+        monkeypatch.setattr(
+            "csp.health.Settings.load",
+            classmethod(lambda cls, *a, **kw: self._stub_settings(token="")),
+        )
+        with pytest.raises(ConfigError, match="ORATS_TOKEN"):
+            orats_health_check("NOW")
+
+    def test_raises_config_error_when_orats_token_env_unset(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ENV-getrieben: `ORATS_TOKEN` unset → `Settings`-Default leer → ConfigError.
+
+        Statt das echte `.env` zu mocken, lassen wir den Stub `orats_token = ""`
+        liefern; das ist der gleiche Effekt aus Sicht von `orats_health_check`."""
+        from csp.exceptions import ConfigError
+        from csp.health import orats_health_check
+
         monkeypatch.delenv("ORATS_TOKEN", raising=False)
+        monkeypatch.setattr(
+            "csp.health.Settings.load",
+            classmethod(lambda cls, *a, **kw: self._stub_settings(token="")),
+        )
         with pytest.raises(ConfigError, match="ORATS_TOKEN"):
             orats_health_check("NOW")
 
     def test_returns_orats_core_with_token(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Pinnt den Sync-Wrapper-Pfad: respx fängt die HTTP-Anfrage,
-        `asyncio.run` wird tatsächlich durchlaufen."""
+        `asyncio.run` wird tatsächlich durchlaufen. `Settings.load` wird gemockt."""
         from csp.health import orats_health_check
 
-        monkeypatch.setenv("ORATS_TOKEN", FAKE_TOKEN)
-        monkeypatch.setenv("ORATS_BASE_URL", BASE_URL)
+        stub = self._stub_settings(token=FAKE_TOKEN, base_url=BASE_URL)
+        monkeypatch.setattr(
+            "csp.health.Settings.load",
+            classmethod(lambda cls, *a, **kw: stub),
+        )
         payload = {
             "data": [
                 {

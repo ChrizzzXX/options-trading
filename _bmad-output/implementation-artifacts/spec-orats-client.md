@@ -2,7 +2,8 @@
 title: 'ORATS Client + Real NOW-78 Cassette'
 type: 'feature'
 created: '2026-04-29'
-status: 'done'
+status: 'in-review'
+implementation_commit: 'f7068e0'
 baseline_commit: '1e7f126'
 context:
   - '{project-root}/_bmad-output/project-context.md'
@@ -110,6 +111,7 @@ context:
 - 2026-04-29 — `OratsCore.avg_opt_volu_20d` widened from `int` to `float` because real ORATS responses return floats (e.g., `121174.45`). Rule 6's German message now `int(...)` -casts the value for clean output. Existing test `test_fails_on_low_volume_only` substring-asserts `"Volumen 10000"` which still matches `"Volumen 10000"` (the int cast).
 - 2026-04-29 — `OratsCore.sector` aliases to ORATS' `sectorName` (GICS sector, e.g. "Technology") rather than `sector` (GICS sub-industry, e.g. "Application Software"). Pflichtregel 8's sector cap operates at the sector level; using the sub-industry would have produced a finer-grained partition than the cap intends.
 - 2026-04-29 — `OratsStrike` has no alias for the `delta` field. ORATS `/hist/strikes` returns the **call** delta in the `delta` field; callers compute the put delta as `delta - 1` before validating the model (`OratsClient.strikes()` and the cassette factory both do this). This keeps `OratsStrike.delta` semantically the put delta everywhere it's consumed.
+- 2026-04-29 — **Review-driven hardening (12 patches across 4 groups).** Group A (security/redaction): `_request_with_retry` now catches `httpx.RequestError` (Connect/Read/Timeout/Pool) with the same 1/2/4 s backoff and raises `ORATSDataError(status=-1, …)` after exhaustion; `_redact_url`/`_redact_text` replaced naive `str.replace` with regex per-query-param scrubbing (token/apikey/api_key/api-key) plus `Authorization: Bearer …`, and `ORATSDataError.__init__` runs the body through the scrubber before truncation — covers short tokens, URL-encoded tokens, and body-leak echoes. Group B (config discipline): `Settings` gained `orats_token: SecretStr` + `orats_base_url: str` from `.env` (no more `os.environ` in `health.py`); a global Loguru sink filter (`csp._logging.install_secret_redactor`) scrubs `token=…`, `apikey=…`, `Authorization: Bearer …`, and `IVOLATILITY_API_KEY=…` from every emitted record. Group C (hygiene/correctness): cassette-hygiene checks widened to URL-encoded tokens and Bearer headers, fail-loud when cassettes exist but `ORATS_TOKEN` unset; `_put_delta_from_call_delta` clamps to `[-1, 1]` first; `_decode_first_response_json` handles `Content-Encoding` as both `list[str]` and `str`; new `ORATSEmptyDataError(ORATSDataError)` for empty-data semantics. Group D (cosmetic): `pyproject.toml` description trimmed of slice-1 verbiage; `recording` marker excluded by default via `addopts = ["-m", "not recording"]`; `OratsCore`/`OratsStrike` migrated to `validate_by_name` + `validate_by_alias` (Pydantic v2.11+ idiom). Test count 114 → 140 (recording marker excluded by default; +3 recording opt-in selectable via `-m recording`). Coverage: orats.py 100 %, overall 99.73 %.
 
 ## Design Notes
 
