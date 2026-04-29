@@ -66,3 +66,19 @@ class FMPEmptyDataError(FMPDataError):
     Status bleibt `200`. Caller (`csp.macro_snapshot`) fängt dies und fällt auf
     `[macro] vix_close`-Settings zurück, statt scan/idea hart zu blockieren.
     """
+
+
+class LifecycleError(Exception):
+    """Ungültiger Status-Übergang oder fehlender Trade/Idea (Slice 6).
+
+    Wird von `csp.close_trade` geworfen, wenn `valid_transition(...)` False
+    liefert ODER wenn der Trade-/Idea-`UUID` nicht in der DB existiert. In
+    beiden Fällen erfolgt KEIN DB-Schreibvorgang — der Aufrufer sieht den DB-
+    Zustand wie vor dem Call.
+    """
+
+
+class IdempotencyError(Exception):
+    """Idempotenz-Verletzung — wird heute nicht ausgelöst (NFR12 ist via
+    `INSERT OR REPLACE` strukturell garantiert), bleibt aber als typed
+    Exception verfügbar für zukünftige strikte-Mode-Checks."""

@@ -11,6 +11,8 @@ from csp.exceptions import (
     ConfigError,
     FMPDataError,
     FMPEmptyDataError,
+    IdempotencyError,
+    LifecycleError,
     ORATSDataError,
     ORATSEmptyDataError,
     PflichtregelError,
@@ -18,9 +20,19 @@ from csp.exceptions import (
 from csp.filters.pflichtregeln import passes_csp_filters
 from csp.health import fmp_health_check, orats_health_check
 from csp.idea import idea
+from csp.lifecycle.state_machine import TradeStatus
+from csp.lifecycle_api import (
+    close_trade,
+    get_idea,
+    list_ideas,
+    list_open_positions,
+    log_idea,
+    log_trade,
+)
 from csp.macro import macro_snapshot
 from csp.models.core import MacroSnapshot, OratsCore, OratsStrike, PortfolioSnapshot
 from csp.models.idea import Idea
+from csp.models.trade import Trade
 from csp.scan import scan
 
 # Secret-redigierender Loguru-Sink — einmal beim Modul-Import installieren.
@@ -32,6 +44,8 @@ __all__ = [
     "FMPEmptyDataError",
     "FmpClient",
     "Idea",
+    "IdempotencyError",
+    "LifecycleError",
     "MacroSnapshot",
     "ORATSDataError",
     "ORATSEmptyDataError",
@@ -41,8 +55,16 @@ __all__ = [
     "PflichtregelError",
     "PortfolioSnapshot",
     "Settings",
+    "Trade",
+    "TradeStatus",
+    "close_trade",
     "fmp_health_check",
+    "get_idea",
     "idea",
+    "list_ideas",
+    "list_open_positions",
+    "log_idea",
+    "log_trade",
     "macro_snapshot",
     "orats_health_check",
     "passes_csp_filters",

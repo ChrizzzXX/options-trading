@@ -9,6 +9,7 @@ dependencies = [
     "pydantic-settings>=2.3",
     "loguru>=0.7",
     "httpx>=0.28.1",
+    "duckdb>=1.5.2",
 ]
 
 [dependency-groups]

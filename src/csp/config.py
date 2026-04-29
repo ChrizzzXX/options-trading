@@ -152,6 +152,14 @@ class Settings(BaseSettings):
         default=DEFAULT_FMP_BASE_URL,
         description="FMP-API-Basis-URL (override via FMP_BASE_URL env). Stable-Namespace.",
     )
+    duckdb_path: Path = Field(
+        default=Path("data/trades.duckdb"),
+        description=(
+            "Pfad zur DuckDB-Datei (Slice 6). `:memory:` als String möglich für Tests; "
+            "andernfalls wird das Eltern-Verzeichnis bei Bedarf erstellt. Override "
+            "via DUCKDB_PATH env."
+        ),
+    )
 
     @classmethod
     def load(cls, path: Path | str = DEFAULT_SETTINGS_PATH) -> Settings:
