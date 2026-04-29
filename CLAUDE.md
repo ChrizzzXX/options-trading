@@ -11,9 +11,9 @@ Python research library for German Cash-Secured-Put options trading. Solo projec
 
 When PRD, project-context, and a spec disagree: **PRD wins, then project-context, then spec.** Surface the conflict to Chris before proceeding.
 
-## State as of 2026-04-29 (after slice 9 — hardening)
+## State as of 2026-04-29 (after slice 10 — MVP feature-complete)
 
-Nine slices shipped on `origin/main` (`https://github.com/ChrizzzXX/options-trading.git`, **private repo**). All commits pushed; tree clean.
+Ten slices shipped on `origin/main` (`https://github.com/ChrizzzXX/options-trading.git`, **private repo**). All commits pushed; tree clean. **All 10 PRD public functions are implemented.**
 
 - **Slice 1-3** — Pflichtregeln gate, ORATS client (with NOW cassette), `csp.idea(...)`. Closed D1.
 - **Slice 4** — `csp.scan(...)` universe scan (`bfceb53`). FR14/FR17/NFR5/NFR20.
@@ -23,18 +23,19 @@ Nine slices shipped on `origin/main` (`https://github.com/ChrizzzXX/options-trad
 - **Slice 8** — IVolatility integration **REJECTED** (`7da5b5e` scope amendment). Probe established Chris's IV plan-tier doesn't include `/equities/eod/options-rawiv` (the only chain endpoint). EU coverage out of scope (MVP and Growth). D22, D30, D40 marked rejected. Forward-compat fields (`region`, `data_freshness`) stay on models.
 - **Slice 8b** — FMP base-URL bugfix + real cassettes (`06dc456`). Slice 5 had `https://financialmodelingprep.com/api/stable/...` which is now legacy 403'd; correct is `https://financialmodelingprep.com/stable/...`. Real `^VIX = 18.01` (live) and `18.71` (2026-04-24) cassettes recorded, scrubbed, played back. Closes D29.
 - **Slice 9** — Hardening pass (`6fb0a26`). Finite validators (`math.isfinite`) on every numeric field of `MacroSnapshot`/`OratsCore`/`OratsStrike` reject NaN/±Inf at the vendor boundary. `_row_to_trade` typing tightened: four `# type: ignore` comments replaced by defensive `isinstance` checks; schema drift raises a clear `LifecycleError` instead of a cryptic pydantic message. Closes D5, D27, D36.
+- **Slice 10** — `csp.export_to_sheets()` (`4d7c0e1`). Last of the PRD's 10 public functions. Implemented against the `gws sheets` CLI via subprocess (no new Python deps — leverages existing OAuth). 3-tab spreadsheet "csp-flywheel-terminal" (`GOOGLE_SHEET_ID` in `.env`), German headers, append-only. Live smoke verified: SMOKE ticker + VIX 18.01 round-tripped through the real Sheet. Closes D31.
 
-Tests: **363 default + 5 opt-in `recording`**. Overall coverage 98.82 %. ruff + ruff-format + mypy --strict + pytest all clean.
+Tests: **375 default + 5 opt-in `recording`**. Overall coverage 98.87 %. ruff + ruff-format + mypy --strict + pytest all clean.
 
-PRD has 10 public library functions; **9 done**: `passes_csp_filters`, `idea`, `scan`, `macro_snapshot`, `log_trade`, `close_trade`, `list_open_positions`, `get_idea`, `list_ideas`, `daily_brief`. **1 to go**: `export_to_sheets` (D31 — Chris confirmed full Google Drive access is set up; needs implementation).
+PRD has 10 public library functions; **all 10 done**: `passes_csp_filters`, `idea`, `scan`, `macro_snapshot`, `log_trade`, `close_trade`, `list_open_positions`, `get_idea`, `list_ideas`, `daily_brief`, `export_to_sheets`. MVP feature-complete.
 
 **Reconciliation truth:** `pytest -k now_regression` (PRD FR29 / NFR18) asserts real NOW-78 on 2026-04-24 **fails 3 of 9 rules** (DTE 56, earnings same day, spread 0.15 USD). Chris confirmed: `override=True` is routine practice. Slice 3 pinned the override-pathway design: rules 1, 3-9 are bypass-able via `override=True`; **Rule 2 (delta band) is structurally unbypassable** because `_select_strike` pre-filters by the band — to take a Rule-2-violating idea, relax `delta_min`/`delta_max` in `settings.toml` for that run.
 
 ## Next slice (recommended)
 
-The MVP is feature-complete except for `csp.export_to_sheets`. Two reasonable directions:
+MVP is feature-complete. From here, three reasonable directions:
 
-**A) `csp.export_to_sheets()` — last of the 10 PRD functions (closes D31).** Chris confirmed full Google Drive + Sheets access is set up. Implement against `gws-sheets` skills (preferred) or `gspread` + `google-auth` directly. Single tab "Ideas" per PRD §5.2 (US-only after the EU scope amendment). NFR6: fire-and-forget, must not block daily-brief. Settings additions: `google_sheet_id` (env var), `google_sa_path` (default `~/.config/csp/sa.json`).
+**A) Daily-driver shakedown.** Use the library for one or two real CSP-decision sessions and surface what doesn't feel right. The 10 functions all *work* in unit tests, but the live conversation flow — `daily_brief()` → review → `log_trade(idea)` → next morning `close_trade(...)` → `export_to_sheets()` — has only been smoke-tested. Friction points discovered here drive the highest-value polish items.
 
 **B) Continue hardening.** Active deferred items still worth doing:
 - D21, D23 — `pytest-benchmark` smoke for NFR1/NFR4 (≤ 60 s scan, ≤ 5 s idea).
@@ -43,7 +44,13 @@ The MVP is feature-complete except for `csp.export_to_sheets`. Two reasonable di
 - D38 — `daily_brief` N+1 (defer until > 20 open positions).
 - D39 — markdown templates (defer until Sheets/PDF needed).
 
-To start: run `/bmad-quick-dev` in a fresh session and reference this CLAUDE.md plus PRD §5.2 (Sheets) or `deferred-work.md`. **Active D-numbers:** D2, D4, D6–D11, D15–D17 (D17 partial), D18–D21, D23–D26, D28, D29 (closed), D31, D32–D35, D37–D39. **Closed:** D1, D3, D5, D12–D14, D22, D27, D29, D30, D36, D40.
+**C) Growth-phase scope expansion.** Things deliberately left out of MVP:
+- Wheel covered-call lifecycle (D32 — assigned → CC open).
+- Iron Condor / Strangle strategy plugins (`AbstractStrategy` base).
+- Scheduled background `daily_brief` via cron / `/loop`.
+- Hormuz Special-Regelwerk (master-investmentliste tickers).
+
+To start: run `/bmad-quick-dev` in a fresh session and reference this CLAUDE.md + `deferred-work.md`. **Active D-numbers:** D2, D4, D6–D11, D15–D17 (D17 partial), D18–D21, D23–D26, D28, D32–D35, D37–D39. **Closed/rejected:** D1, D3, D5, D12–D14, D22, D27, D29, D30, D31, D36, D40.
 
 ## Hard rules (don't violate without explicit human approval)
 
