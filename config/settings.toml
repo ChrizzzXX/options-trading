@@ -28,3 +28,7 @@ allowed_tickers = [
     "CF",
     "NTR",
 ]
+
+# Statische Makro-Werte (Platzhalter bis FMP-Client-Slice; siehe deferred-work D13).
+[macro]
+vix_close = 18.7

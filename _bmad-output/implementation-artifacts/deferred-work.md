@@ -32,6 +32,32 @@ Findings surfaced during slice review that aren't this story's problem. Each ent
 
 ---
 
+## From `spec-idea-singleticker.md` (2026-04-29)
+
+- **D12 — `Idea.format_fbg_mail()` not implemented.** FR15 says ideas render in the brief §7.1 FBG-mail format with German number locale. Today the `Idea` model exposes raw fields; Claude/Chris formats manually. **Lands with:** Idea-formatter slice — implement `format_fbg_mail()` against the brief §7.1 worked example, with `ui/formatters.py` for German-locale number/date/percentage helpers.
+
+- **D13 — `vix_close` is static in `[macro]` settings until FMP-client slice.** Today the slice reads `Settings.macro.vix_close` from `config/settings.toml`; live VIX requires FMP. Risk: stale VIX silently passes/fails Pflichtregel 1. **Lands with:** FMP-client slice — replace internal `MacroSnapshot` construction with a live FMP fetch; preserve `csp.idea` public signature.
+
+- **D14 — Override DuckDB persistence stub.** Spec inherits the FR9 obligation (override decisions persist for monthly review) but cannot implement it — DuckDB schema doesn't exist yet. Today: loguru WARN only (already wired in slice 1). **Lands with:** lifecycle slice — extends D3 (`override=True` has no DB persistence stub) by also persisting the `Idea` snapshot per `csp.idea(..., override=True)` invocation.
+
+- **D15 — `sector_exposure_delta_pct` requires position sizing.** FR16 says `Idea` exposes "sector-exposure delta vs current portfolio" — i.e., how much a hypothetical fill would shift the sector share. Computing the delta needs notional-per-trade, which lives in the lifecycle slice (positions + cash-secured amount). Today: `Idea.current_sector_share_pct` carries the *existing* share only. **Lands with:** lifecycle slice — add `sector_exposure_delta_pct` once `csp.log_trade` knows position sizing.
+
+## From `spec-idea-singleticker.md` review (2026-04-29)
+
+- **D16 — `Idea.pflichtregeln_passed=True` when `override=True` is a downstream-filter landmine.** With override active and rules failed, the boolean is `True` but `bypassed_rules` carries the violations. A naive `filter(lambda i: i.pflichtregeln_passed, ideas)` would silently surface override-bypassed candidates. The naming is per-spec (Slice 3 §Always) but ergonomically risky. **Lands with:** rename slice — split into `surfaced: bool` + `rules_originally_passed: bool`, or add a stronger `actionable` invariant; only justify the churn if a downstream consumer actually trips on this.
+
+- **D17 — `Idea.data_freshness="live"` covers macro implicitly.** The flag tracks the ORATS data segment; the VIX-close used for Pflichtregel 1 comes from static `[macro]` settings (D13). A user reading `data_freshness="live"` may assume VIX is live too. **Lands with:** FMP-client slice (extends D13) — promote `data_freshness` to per-segment (`vendor_data`, `macro`) once FMP delivers live VIX.
+
+- **D18 — Call→put delta conversion at `OratsClient.strikes` lacks defensive assertion.** `OratsClient` silently call-to-put converts via `delta - 1`. If ORATS ever surfaces real put-deltas (or renames the field), the conversion would double-negate or skew silently. `_select_strike` would then filter out everything (band requires negative delta) and raise `ORATSEmptyDataError` rather than fail loud. **Lands with:** vendor-schema-versioning slice (D8) — assert `all(d <= 0 for d in deltas)` post-conversion; fail loud on shape change.
+
+- **D19 — `PortfolioSnapshot.sector_exposures` lookup is case-sensitive.** ORATS returns sector strings like `"Technology"`; a portfolio dict keyed `"technology"` would silently miss, Pflichtregel 8 would pass against an empty share, and Chris would see 0% sector exposure when reality says 30%. Today the model never carries real data (always empty in this slice). **Lands with:** `csp.log_trade` slice — normalize keys at `PortfolioSnapshot` construction (title-case or case-fold both sides) and add a unit test pinning case-insensitive equality.
+
+- **D20 — Redacted URL builder uses manual `&`-join, not `urllib.parse.urlencode`.** `_async_idea` and `OratsClient._request_with_retry` build the redacted-URL string for error messages by hand. A ticker containing `&`/`=`/`#` (none in current curated universe) would produce ambiguous redaction. Low blast radius today; latent bug if universe expands. **Lands with:** vendor-schema slice OR first non-curated ticker — switch to `httpx.QueryParams` for the redacted URL too.
+
+- **D21 — No NFR4 (≤5 s) timing benchmark for `csp.idea`.** Spec Always says ≤ 5 s wall-clock for US ticker. No benchmark pins this; tests run in milliseconds via respx. **Lands with:** future quality/perf slice — add a `pytest-benchmark` smoke (or a slow-marker integration) once a real cassette + warm cache pattern is in place.
+
+---
+
 ## How to clear an entry
 
 When a slice closes one of these items: edit this file, move the entry from "active" to a `## Closed` section with a `closed: <date> via <commit-or-spec>` tag, and reference back in that slice's Spec Change Log.

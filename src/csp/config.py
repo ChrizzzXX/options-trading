@@ -94,6 +94,27 @@ class UniverseConfig(BaseModel):
         return [t.upper() for t in value]
 
 
+class MacroConfig(BaseModel):
+    """Statische Makro-Werte (heute nur VIX-Close).
+
+    `vix_close` ist ein Platzhalter, bis der FMP-Client-Slice eine Live-VIX-Quelle
+    liefert (deferred-work D13). Bis dahin liest `csp.idea(...)` den Wert hier
+    und konstruiert daraus den `MacroSnapshot`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    vix_close: float = Field(
+        gt=0.0,
+        le=200.0,
+        description=(
+            "VIX-Schlusskurs (Cboe Volatility Index); muss > 0 sein (0/NaN deutet "
+            "auf eine fehlende Macro-Quelle hin) und <= 200 (typo-Schutz: 187 statt "
+            "18,7 würde Pflichtregel 1 immer passieren lassen)."
+        ),
+    )
+
+
 class Settings(BaseSettings):
     """Globale Konfiguration; lädt TOML (Regeln) + `.env` (Vendor-Secrets).
 
@@ -110,6 +131,7 @@ class Settings(BaseSettings):
 
     rules: RuleThresholds
     universe: UniverseConfig
+    macro: MacroConfig
     orats_token: SecretStr = Field(
         default=SecretStr(""),
         description="ORATS-API-Token aus .env. Leer = ConfigError beim Vendor-Aufruf.",

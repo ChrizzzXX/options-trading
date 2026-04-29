@@ -75,7 +75,11 @@ class OratsStrike(BaseModel):
 
     strike: float
     delta: float = Field(ge=-1.0, le=0.0, description="Put-Delta; muss in [-1, 0] liegen.")
-    dte: int
+    dte: int = Field(
+        gt=0,
+        description="Tage bis Verfall; muss > 0 sein (0DTE-Strikes scheiden für CSP aus, "
+        "und die Yield-Berechnung würde sonst durch 0 dividieren).",
+    )
     put_ask: float = Field(alias="putAskPrice")
     put_bid: float = Field(alias="putBidPrice")
 

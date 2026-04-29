@@ -400,7 +400,7 @@ These are the **only** public symbols Claude is expected to call. Anything else 
 |---|---|---|
 | `csp.daily_brief(date=None)` | `DailyBrief` | Composite: macro snapshot + open positions + top-3 candidates + Earnings warnings (next 8d). |
 | `csp.scan(strategy="csp", max_results=10)` | `list[Idea]` | Full universe run, ranked by annualized yield. Pflichtregeln-passing only. |
-| `csp.idea(ticker, dte=45, target_delta=-0.20, override=False)` | `Idea \| None` | Single-ticker CSP idea. Returns `None` with `reasons: list[str]` if any Pflichtregel fails. |
+| `csp.idea(ticker, dte=45, target_delta=-0.20, override=False)` | `Idea` | Single-ticker CSP idea. Always returns a populated Idea; `pflichtregeln_passed: bool` plus `reasons` / `bypassed_rules` carry the gate verdict. |
 | `csp.list_open_positions()` | `list[Position]` | Open trades with computed DTE, P/L vs theoretical, exit-action recommendation. |
 | `csp.log_trade(ticker, strike, premium, dte, open_date, ...)` | `Trade` | Manual trade-lifecycle entry — opens a Position. |
 | `csp.close_trade(trade_id, close_premium, close_date, status)` | `Trade` | Close at 50%-take, 21-DTE-exit, assignment, expired, or stop-loss. |
@@ -437,10 +437,10 @@ brief = daily_brief()
 #            open_positions=[...], top_candidates=[...], earnings_warnings=[...])
 
 now_idea = idea("NOW", dte=55, target_delta=-0.20)
-if now_idea is None:
-    print("No idea — Pflichtregel failures.")
+if not now_idea.pflichtregeln_passed:
+    print("No idea — Pflichtregel failures:", now_idea.reasons)
 else:
-    print(now_idea.format_fbg_mail())
+    print(now_idea.format_fbg_mail())  # available once formatter slice ships
 ```
 
 ### Configuration
@@ -569,7 +569,9 @@ Actors:
 
 ### Idea Generation & Ranking
 
-- **FR13:** The library can generate a single-ticker CSP idea given `(ticker, dte, target_delta)`, returning either a populated `Idea` model or `None` with `reasons: list[str]` (German) when any Pflichtregel fails. Region dispatch happens internally based on universe metadata.
+*Revision 2026-04-29:* FR13 return shape amended from `Idea | None` to always-`Idea` (override-pathway annotation lives on the model). See `_bmad-output/implementation-artifacts/spec-idea-singleticker.md` §Design Notes.
+
+- **FR13:** The library can generate a single-ticker CSP idea given `(ticker, dte, target_delta, as_of=None, override=False)`, returning a populated `Idea` model whose `pflichtregeln_passed: bool` indicates rule-gate pass/fail; on failure `Idea.reasons` carries German rule descriptions. With `override=True`, the gate is bypassed: `pflichtregeln_passed=True`, `Idea.bypassed_rules` carries the German strings of the ignored rules, plus a loguru WARN. Region dispatch happens internally based on universe metadata (US-only in MVP slice 3; EU dispatch follows in the IVolatility-client slice).
 - **FR14:** The library can scan the entire universe (US + EU together) and return up to N candidates ranked by annualized yield (`Premium/Strike × 365/DTE × 100`), filtered to Pflichtregeln-passing only.
 - **FR15:** The library can render an idea in the brief §7.1 FBG-mail format (German number locale, every field per the §7.1 example) via `Idea.format_fbg_mail()`. EU candidates include the EU-native option symbol per IVolatility convention.
 - **FR16:** The library can compute and expose annualized yield, OTM percentage, sector-exposure delta vs current portfolio, and Earnings-distance-days as `Idea` fields.

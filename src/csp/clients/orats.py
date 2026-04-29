@@ -118,17 +118,29 @@ class OratsClient:
         self._base_url = base_url.rstrip("/")
         self._token = token
 
-    async def cores(self, ticker: str) -> OratsCore:
-        """Aktueller `/cores`-Snapshot für einen Ticker."""
+    async def cores(self, ticker: str, *, trade_date: date | None = None) -> OratsCore:
+        """`/cores`-Snapshot für einen Ticker — aktuell oder historisch.
+
+        - Ohne ``trade_date``: ``/cores`` (Live-Endpunkt, aktueller Snapshot).
+        - Mit ``trade_date``: ``/hist/cores?tradeDate=YYYYMMDD`` (historisch — auf
+          dem aktuellen Plan-Tier verfügbar; für die NOW-78-Regression unerlässlich).
+        """
         from csp.exceptions import ORATSEmptyDataError
 
-        data = await self._request_with_retry("GET", "/cores", {"ticker": ticker})
+        params: dict[str, str] = {"ticker": ticker}
+        if trade_date is not None:
+            path = "/hist/cores"
+            params["tradeDate"] = trade_date.strftime("%Y%m%d")
+        else:
+            path = "/cores"
+        data = await self._request_with_retry("GET", path, params)
         items = data.get("data", [])
         if not items:
+            param_repr = "&".join(f"{k}={v}" for k, v in params.items())
             raise ORATSEmptyDataError(
                 status=200,
                 body=f"leere data-Liste für ticker={ticker}",
-                url_redacted=f"{self._base_url}/cores?ticker={ticker}&token={_REDACTED}",
+                url_redacted=f"{self._base_url}{path}?{param_repr}&token={_REDACTED}",
             )
         return OratsCore.model_validate(items[0])
 

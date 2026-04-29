@@ -9,13 +9,16 @@ from csp.config import Settings
 from csp.exceptions import ConfigError, ORATSDataError, ORATSEmptyDataError, PflichtregelError
 from csp.filters.pflichtregeln import passes_csp_filters
 from csp.health import orats_health_check
+from csp.idea import idea
 from csp.models.core import MacroSnapshot, OratsCore, OratsStrike, PortfolioSnapshot
+from csp.models.idea import Idea
 
 # Secret-redigierender Loguru-Sink — einmal beim Modul-Import installieren.
 install_secret_redactor()
 
 __all__ = [
     "ConfigError",
+    "Idea",
     "MacroSnapshot",
     "ORATSDataError",
     "ORATSEmptyDataError",
@@ -25,6 +28,7 @@ __all__ = [
     "PflichtregelError",
     "PortfolioSnapshot",
     "Settings",
+    "idea",
     "orats_health_check",
     "passes_csp_filters",
 ]
