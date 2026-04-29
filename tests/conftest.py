@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +12,7 @@ import pytest
 
 from csp.config import Settings
 from csp.models.core import MacroSnapshot, PortfolioSnapshot
+from csp.models.idea import Idea
 from tests.fixtures.now_2026_04_24 import (
     NOW_CORE,
     NOW_MACRO,
@@ -71,3 +75,43 @@ def now_macro() -> object:
 @pytest.fixture
 def now_empty_portfolio() -> object:
     return NOW_PORTFOLIO_EMPTY
+
+
+@pytest.fixture
+def make_idea() -> Callable[..., Idea]:
+    """Factory für synthetische `Idea`-Objekte zur Sort-/Filter-Test-Verifikation.
+
+    Erlaubt es Tests, deterministische Ranking-Annahmen ohne HTTP zu verifizieren.
+    Default-Felder produzieren ein plausibles Pass-Idea; nur `ticker` und
+    `yield_pct` sind Caller-relevant. (Patch F6+A3 aus Slice-4-Review:
+    `sector`-Parameter wurde entfernt — er wurde im Modell nie benutzt und
+    versprach eine Anpassbarkeit, die nicht existierte.)
+    """
+
+    def _factory(
+        ticker: str,
+        yield_pct: float,
+        *,
+        passed: bool = True,
+    ) -> Idea:
+        return Idea(
+            ticker=ticker.upper(),
+            strike=Decimal("100.00"),
+            dte=45,
+            delta=-0.20,
+            put_bid=Decimal("1.50"),
+            put_ask=Decimal("1.60"),
+            mid_premium=Decimal("1.5500"),
+            annualized_yield_pct=yield_pct,
+            otm_pct=10.0,
+            earnings_distance_days=30,
+            current_sector_share_pct=0.0,
+            pflichtregeln_passed=passed,
+            reasons=[] if passed else ["Pflichtregel X — synthetischer Fail"],
+            bypassed_rules=[],
+            as_of=date(2026, 4, 29),
+            data_freshness="live",
+            region="US",
+        )
+
+    return _factory

@@ -31,35 +31,38 @@ from csp.strategies.csp import _select_strike, build_idea
 _BERLIN = ZoneInfo("Europe/Berlin")
 
 
-async def _async_idea(
+async def _fetch_and_build_idea(
+    orats: OratsClient,
     ticker: str,
+    *,
     dte: int,
     target_delta: float,
-    *,
     as_of: date | None,
+    effective_as_of: date,
     override: bool,
     settings: Settings,
-    base_url: str,
-    token: str,
 ) -> Idea:
-    """Async-Orchestrator: ORATS-Fetch → Strike-Selektion → Idea-Konstruktion.
+    """Pro-Ticker-Orchestrator: ORATS-Fetch → Strike-Selektion → Idea-Konstruktion.
 
-    Wird vom Sync-Wrapper `idea(...)` über ``asyncio.run`` aufgerufen.
-    Öffnet einen kurzen `httpx.AsyncClient` (Timeout 30 s), damit der NFR4-Limit
-    von 5 s pro US-Aufruf in der Regel mit Sicherheitsmarge eingehalten wird.
+    Nimmt einen vorbereiteten `OratsClient` entgegen — so kann sowohl der Single-
+    Ticker-Aufruf (`_async_idea`) als auch die Universe-Variante (`_async_scan`)
+    den HTTP-Client teilen, ohne dass diese Funktion etwas über das Lifecycle der
+    `httpx.AsyncClient`-Verbindung wissen muss.
+
+    Patch P3 (Slice 4 review): Ticker wird hier zentral normalisiert (strip + upper),
+    damit beide öffentlichen Pfade (`csp.idea`, `csp.scan`) dieselbe Garantie
+    erhalten. `effective_as_of` wird **nicht mehr** intern via `datetime.now(...)`
+    aufgelöst — der Caller liefert das schon einmal aufgelöste Datum, damit alle
+    Universe-Tasks denselben Stamp tragen (Patch P1: NFR20-Determinismus).
     """
+    ticker = ticker.strip().upper()
     region: Literal["US", "EU"] = "US"
     data_freshness: Literal["live", "eod", "stale", "unavailable"] = (
         "live" if as_of is None else "eod"
     )
-    # TZ-aware Datumsauflösung über Europe/Berlin (Chris' lokale Zeit) — vermeidet
-    # naive `date.today()` und Mitternachts-Drift gegenüber UTC.
-    effective_as_of = as_of if as_of is not None else datetime.now(_BERLIN).date()
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        orats = OratsClient(client, base_url=base_url, token=token)
-        core = await orats.cores(ticker, trade_date=as_of)
-        strikes = await orats.strikes(ticker, trade_date=as_of)
+    core = await orats.cores(ticker, trade_date=as_of)
+    strikes = await orats.strikes(ticker, trade_date=as_of)
 
     strike = _select_strike(strikes, target_delta=target_delta, dte=dte, settings=settings)
     macro = MacroSnapshot(vix_close=settings.macro.vix_close)
@@ -76,6 +79,40 @@ async def _async_idea(
         region=region,
         override=override,
     )
+
+
+async def _async_idea(
+    ticker: str,
+    dte: int,
+    target_delta: float,
+    *,
+    as_of: date | None,
+    override: bool,
+    settings: Settings,
+    base_url: str,
+    token: str,
+) -> Idea:
+    """Async-Wrapper für den Single-Ticker-Pfad.
+
+    Öffnet einen kurzen `httpx.AsyncClient` (Timeout 30 s) und delegiert an den
+    geteilten `_fetch_and_build_idea`. Der NFR4-Limit von 5 s pro US-Aufruf wird
+    so in der Regel mit Sicherheitsmarge eingehalten.
+    """
+    # Effective-as_of einmal hier auflösen — single call, keine Drift möglich,
+    # aber Symmetrie zur Universe-Variante (Patch P1) gewährleistet.
+    effective_as_of = as_of if as_of is not None else datetime.now(_BERLIN).date()
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        orats = OratsClient(client, base_url=base_url, token=token)
+        return await _fetch_and_build_idea(
+            orats,
+            ticker,
+            dte=dte,
+            target_delta=target_delta,
+            as_of=as_of,
+            effective_as_of=effective_as_of,
+            override=override,
+            settings=settings,
+        )
 
 
 def idea(
