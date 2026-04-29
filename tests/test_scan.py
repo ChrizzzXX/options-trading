@@ -146,10 +146,14 @@ def stub_settings_factory(
     def _make(tickers: list[str]) -> Settings:
         from pydantic import SecretStr
 
+        # Slice-8b: `fmp_key` aus `.env` muss explizit geleert werden, sonst
+        # ruft `_fetch_macro` live FMP an statt auf [macro] settings zu fallen
+        # — und respx hat hier keine FMP-Route registriert.
         patched = default_settings.model_copy(
             update={
                 "orats_token": SecretStr(FAKE_TOKEN),
                 "orats_base_url": BASE_URL,
+                "fmp_key": SecretStr(""),
                 "universe": default_settings.universe.model_copy(
                     update={"allowed_tickers": tickers}
                 ),

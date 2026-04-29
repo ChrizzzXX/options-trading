@@ -402,8 +402,14 @@ def stub_settings(
     from pydantic import SecretStr
 
     # Wir kopieren die default_settings und überschreiben Token + Base-URL.
+    # Slice-8b: `fmp_key` explizit leeren, damit `_fetch_macro` den Settings-
+    # Fallback nimmt und nicht den realen FMP-Key aus `.env` benutzt.
     patched = default_settings.model_copy(
-        update={"orats_token": SecretStr(FAKE_TOKEN), "orats_base_url": BASE_URL}
+        update={
+            "orats_token": SecretStr(FAKE_TOKEN),
+            "orats_base_url": BASE_URL,
+            "fmp_key": SecretStr(""),
+        }
     )
     from csp import config as csp_config
 

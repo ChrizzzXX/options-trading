@@ -19,7 +19,7 @@ from csp.config import Settings
 from csp.macro import macro_snapshot
 from csp.models.core import MacroSnapshot
 
-BASE_URL = "https://financialmodelingprep.com/api"
+BASE_URL = "https://financialmodelingprep.com"
 FAKE_KEY = "fmp-test-key-not-real"
 
 

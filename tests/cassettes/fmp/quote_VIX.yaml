@@ -1,0 +1,60 @@
+interactions:
+- request:
+    body: ''
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Host:
+      - financialmodelingprep.com
+      User-Agent:
+      - python-httpx/0.28.1
+    method: GET
+    uri: https://financialmodelingprep.com/stable/quote?symbol=%5EVIX
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA12QXUvDMBSG7/crQq4lpEm7dN5tdWBB1KshiIPYHbpgk5Q2qyvif7cfWZxe5OZ5
+        35wnJ68LhL6GgxBue/1uK3yL8H6Xv+CbmRqpYWTZ5mmLdraSTlXK9Sg3BzhfSnWjirEVpYTGnhVH
+        aUp4hqYA42Q5xSQSQqz+FAZMCYs862x1mnzUg4PsH+zneFeQNPqF96o8zsI48bQH2XjME8KvqJ/A
+        CU891bL5AJfJ+ko1LbHuyoQOkDHCV6F+iRils5SJOHjhHDbB+ePdNnydrcH4l/MwCDplT21W2Rb+
+        ZU5paJ3U9cSFiEW8pMsh+168/QCJMO/vpwEAAA==
+    headers:
+      Access-Control-Allow-Credentials:
+      - 'true'
+      Access-Control-Allow-Headers:
+      - X-Requested-With, content-type, apikey, auth-token, Authorization, stripe-signature,
+        APPS, publicauthkey, privateauthkey, Mcp-Session-Id
+      Access-Control-Allow-Methods:
+      - GET, POST, DELETE, OPTIONS
+      Access-Control-Allow-Origin:
+      - '*'
+      Access-Control-Expose-Headers:
+      - Mcp-Session-Id
+      Access-Control-Max-Age:
+      - '3600'
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json; charset=utf-8
+      Date:
+      - Wed, 29 Apr 2026 14:56:56 GMT
+      ETag:
+      - W/"1a7-jned0GyCs2vrtuVs116UE0U8A3g"
+      Server:
+      - nginx
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Accept-Encoding
+      X-Frame-Options:
+      - SAMEORIGIN
+    status:
+      code: 200
+      message: OK
+version: 1

@@ -26,7 +26,10 @@ from csp.exceptions import ConfigError
 
 DEFAULT_SETTINGS_PATH = Path("config/settings.toml")
 DEFAULT_ORATS_BASE_URL = "https://api.orats.io/datav2"
-DEFAULT_FMP_BASE_URL = "https://financialmodelingprep.com/api"
+DEFAULT_FMP_BASE_URL = "https://financialmodelingprep.com"
+"""FMP-Stable-Namespace lebt unter `https://financialmodelingprep.com/stable/...` —
+das `/api/`-Segment ist die **Legacy**-Variante und wird seit 2025-08-31 mit HTTP 403
+"Legacy Endpoint" abgelehnt. Slice 5 hatte initial `/api` — Slice 8b-Fix entfernte es."""
 
 
 class RuleThresholds(BaseModel):

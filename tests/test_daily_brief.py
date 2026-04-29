@@ -23,7 +23,7 @@ from csp.models.idea import Idea
 from csp.models.trade import Trade
 
 ORATS_BASE = "https://api.orats.io/datav2"
-FMP_BASE = "https://financialmodelingprep.com/api"
+FMP_BASE = "https://financialmodelingprep.com"
 
 
 @pytest.fixture

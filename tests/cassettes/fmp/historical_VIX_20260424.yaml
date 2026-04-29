@@ -1,0 +1,58 @@
+interactions:
+- request:
+    body: ''
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Host:
+      - financialmodelingprep.com
+      User-Agent:
+      - python-httpx/0.28.1
+    method: GET
+    uri: https://financialmodelingprep.com/stable/historical-price-eod/light?from=2026-04-19&symbol=%5EVIX&to=2026-04-24
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA4vmUlCoBmIFBaXiytyk/BwlKwWluDDPCCUdiGhKYkkqSMzIwMhM18BE18gEJlNQ
+        lJkMkjK00DM3hIqV5eeU5oIEDYD8Wh2SDTfGMNxSz5hahhthcbmlEZUMN8TiclMqmW2AxeEW5lgN
+        54oFACr6c4HSAQAA
+    headers:
+      Access-Control-Allow-Credentials:
+      - 'true'
+      Access-Control-Allow-Headers:
+      - X-Requested-With, content-type, apikey, auth-token, Authorization, stripe-signature,
+        APPS, publicauthkey, privateauthkey, Mcp-Session-Id
+      Access-Control-Allow-Methods:
+      - GET, POST, DELETE, OPTIONS
+      Access-Control-Allow-Origin:
+      - '*'
+      Access-Control-Expose-Headers:
+      - Mcp-Session-Id
+      Access-Control-Max-Age:
+      - '3600'
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json; charset=utf-8
+      Date:
+      - Wed, 29 Apr 2026 14:56:56 GMT
+      ETag:
+      - W/"1d2-XigTwyZTI5nwaJcZVPYtmDpZO0Y"
+      Server:
+      - nginx
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Accept-Encoding
+      X-Frame-Options:
+      - SAMEORIGIN
+    status:
+      code: 200
+      message: OK
+version: 1

@@ -1,17 +1,31 @@
-"""Tests für `csp.FmpClient` und `csp.fmp_health_check` (Slice 5)."""
+"""Tests für `csp.FmpClient` und `csp.fmp_health_check` (Slice 5 + 8b).
+
+Drei Schichten:
+- `TestLiveVix` / `TestHistoricalVix` / etc.: respx-Mocks pinnen die Antwortform
+  für die zwei `/stable/`-Endpunkte.
+- `TestCassettes`: vcrpy-Cassettes pinnen die echte FMP-Antwortform für
+  ``/stable/quote?symbol=^VIX`` und ``/stable/historical-price-eod/light``
+  — recorded 2026-04-29 nach Slice-8b-Base-URL-Fix (closes D29).
+- `TestRecording`: einmaliger Live-HTTP-Lauf mit `pytest -m recording
+  --vcr-record=once`. Standard-Lauf überspringt (Marker nicht selektiert,
+  `record_mode='none'`).
+"""
 
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from collections.abc import Iterator
 from datetime import date
+from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
 import respx
 from pydantic import SecretStr
+from vcr import VCR
 
 import csp
 from csp import config as csp_config
@@ -19,8 +33,30 @@ from csp.clients.fmp import FmpClient
 from csp.config import Settings
 from csp.exceptions import ConfigError, FMPDataError, FMPEmptyDataError
 
-BASE_URL = "https://financialmodelingprep.com/api"
+BASE_URL = "https://financialmodelingprep.com"
 FAKE_KEY = "fmp-test-key-not-real-67890"
+CASSETTE_DIR = Path(__file__).parent / "cassettes" / "fmp"
+
+
+def _vcr_fmp(record_mode: str = "none") -> VCR:
+    """VCR-Instanz für FMP-Cassettes — `apikey` query-param scrubbed."""
+    return VCR(
+        cassette_library_dir=str(CASSETTE_DIR),
+        record_mode=record_mode,
+        filter_query_parameters=["apikey"],
+    )
+
+
+def _record_mode(request: pytest.FixtureRequest) -> str:
+    """Liest `--vcr-record` aus pytest-vcr; default `none`."""
+    cli = request.config.getoption("--vcr-record")
+    return cli or "none"
+
+
+@pytest.fixture
+def vcr_fmp(request: pytest.FixtureRequest) -> Iterator[VCR]:
+    """Liefert eine FMP-VCR-Instanz, deren record_mode von der CLI gesteuert wird."""
+    yield _vcr_fmp(_record_mode(request))
 
 
 def _run(coro: Any) -> Any:  # type: ignore[no-untyped-def]
@@ -350,3 +386,76 @@ class TestPublicSurface:
         assert csp.fmp_health_check is not None
         for name in ("FmpClient", "FMPDataError", "FMPEmptyDataError", "fmp_health_check"):
             assert name in csp.__all__
+
+
+# ---------------------------------------------------------------------------
+# Cassette playback — closes D29 (real FMP cassette pending FMP_KEY).
+# ---------------------------------------------------------------------------
+
+
+class TestCassettes:
+    """Liest die echten FMP-Antwortformen aus den eingespielten Cassettes."""
+
+    def test_quote_vix_parses(self, vcr_fmp: VCR) -> None:
+        async def call() -> float:
+            async with httpx.AsyncClient() as client:
+                fmp = FmpClient(client, base_url=BASE_URL, api_key=FAKE_KEY)
+                return await fmp.vix_close()
+
+        with vcr_fmp.use_cassette("quote_VIX.yaml"):
+            vix = _run(call())
+
+        assert vix > 0
+        assert vix < 200  # Sanity — VIX historisch nie über 200.
+
+    def test_historical_vix_parses(self, vcr_fmp: VCR) -> None:
+        async def call() -> float:
+            async with httpx.AsyncClient() as client:
+                fmp = FmpClient(client, base_url=BASE_URL, api_key=FAKE_KEY)
+                return await fmp.vix_close(trade_date=date(2026, 4, 24))
+
+        with vcr_fmp.use_cassette("historical_VIX_20260424.yaml"):
+            vix = _run(call())
+
+        assert vix > 0
+        assert vix < 200
+
+
+@pytest.mark.recording
+class TestRecording:
+    """Live-HTTP — opt-in via `pytest -m recording --vcr-record=once`.
+
+    Der Standard-Pytest-Lauf überspringt diese Klasse, weil `pyproject.toml`
+    `addopts = ["-m", "not recording"]` setzt. Zusätzlich greift `record_mode="none"`
+    in `vcr_fmp` und blockiert echte HTTP-Aufrufe in den Cassette-Tests.
+    """
+
+    def test_record_quote_vix(self, vcr_fmp: VCR) -> None:
+        api_key = os.environ.get("FMP_KEY", "")
+        if not api_key:
+            pytest.skip("FMP_KEY nicht gesetzt — Recording übersprungen")
+        base_url = os.environ.get("FMP_BASE_URL", BASE_URL)
+
+        async def call() -> float:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                fmp = FmpClient(client, base_url=base_url, api_key=api_key)
+                return await fmp.vix_close()
+
+        with vcr_fmp.use_cassette("quote_VIX.yaml"):
+            vix = _run(call())
+        assert vix > 0
+
+    def test_record_historical_vix(self, vcr_fmp: VCR) -> None:
+        api_key = os.environ.get("FMP_KEY", "")
+        if not api_key:
+            pytest.skip("FMP_KEY nicht gesetzt — Recording übersprungen")
+        base_url = os.environ.get("FMP_BASE_URL", BASE_URL)
+
+        async def call() -> float:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                fmp = FmpClient(client, base_url=base_url, api_key=api_key)
+                return await fmp.vix_close(trade_date=date(2026, 4, 24))
+
+        with vcr_fmp.use_cassette("historical_VIX_20260424.yaml"):
+            vix = _run(call())
+        assert vix > 0
