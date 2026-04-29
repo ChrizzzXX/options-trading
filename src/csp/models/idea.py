@@ -47,8 +47,12 @@ class Idea(BaseModel):
     otm_pct: float = Field(
         description="Out-of-the-Money-Distanz in % vom Spot ((spot - strike) / spot * 100)."
     )
-    earnings_distance_days: int = Field(
-        description="Tage bis zum nächsten Earnings (ORATS daysToNextErn)."
+    earnings_distance_days: int | None = Field(
+        description=(
+            "Tage bis zum nächsten Earnings (ORATS daysToNextErn). ``None`` = "
+            "Vendor-Datum nicht verfügbar (Slice-12 Sentinel-Erkennung); "
+            "Pflichtregel 5 markiert das als manuell-prüfen."
+        )
     )
     sector: str = Field(
         description=(
@@ -159,7 +163,11 @@ class Idea(BaseModel):
             f"Cash-Bedarf:       {format_usd(cash_demand, decimals=0)} ({contracts} Kontrakt"
             f"{'e' if contracts != 1 else ''})",
             f"Ann. Rendite:      {format_pct(self.annualized_yield_pct, decimals=1)} p.a.",
-            f"Nächste Earnings:  {self.earnings_distance_days} Tage Abstand",
+            (
+                f"Nächste Earnings:  {self.earnings_distance_days} Tage Abstand"
+                if self.earnings_distance_days is not None
+                else "Nächste Earnings:  unbekannt (Vendor-Datum nicht verfügbar)"
+            ),
         ]
         clean_pass = self.pflichtregeln_passed and not self.bypassed_rules
         lines.append(f"Pflichtregeln:     {'OK' if clean_pass else 'NICHT BESTANDEN'}")

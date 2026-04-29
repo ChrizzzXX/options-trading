@@ -15,6 +15,7 @@ def _idea(
     bypassed: list[str] | None = None,
     reasons: list[str] | None = None,
     passed: bool = True,
+    earnings_distance_days: int | None = 86,
 ) -> Idea:
     return Idea(
         ticker="NOW",
@@ -26,7 +27,7 @@ def _idea(
         mid_premium=Decimal("1.4700"),
         annualized_yield_pct=13.3,
         otm_pct=15.1,
-        earnings_distance_days=86,
+        earnings_distance_days=earnings_distance_days,
         sector="Technology",
         under_price=91.84,
         iv_rank_1y_pct=96.0,
@@ -110,6 +111,15 @@ class TestFormatFbgMail:
             bypassed=["Pflichtregel 5"],
         ).format_fbg_mail()
         assert "Pflichtregeln:     NICHT BESTANDEN" in out
+
+    def test_unknown_earnings_distance_renders_german_placeholder(self) -> None:
+        """Slice-12: ``earnings_distance_days=None`` → deutscher Platzhalter statt
+        ``None Tage Abstand``. Die Idee rendert sonst genauso.
+        """
+        out = _idea(earnings_distance_days=None).format_fbg_mail()
+        assert "Nächste Earnings:  unbekannt (Vendor-Datum nicht verfügbar)" in out
+        assert "None Tage" not in out
+        assert "None" not in out
 
 
 @pytest.mark.parametrize(

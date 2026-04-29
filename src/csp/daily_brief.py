@@ -87,13 +87,17 @@ def daily_brief(*, max_ideas: int = 10) -> DailyBrief:
     )
 
 
-def _fetch_earnings_days_for_opens(settings: Settings, opens: list[Trade]) -> dict[str, int]:
+def _fetch_earnings_days_for_opens(settings: Settings, opens: list[Trade]) -> dict[str, int | None]:
     """Lädt aktuellen `daysToNextErn` für jede offene Position aus ORATS.
 
     Returns:
         Mapping ticker → daysToNextErn. Tickers die ORATS gerade nicht
         liefert (4xx, leere Antwort, Transport) fehlen im Mapping —
         der Caller behandelt fehlende Keys als "unbekannt, keine WARN".
+
+        Slice-12: der Wert kann ``None`` sein, wenn ORATS für den Ticker den
+        Earnings-Sentinel zurückliefert. Der Caller behandelt ``None`` analog
+        zu fehlendem Key (kein spurious emergency-close-WARN).
     """
     if not opens:
         return {}
@@ -106,8 +110,8 @@ def _fetch_earnings_days_for_opens(settings: Settings, opens: list[Trade]) -> di
 
     unique_tickers = sorted({t.ticker for t in opens})
 
-    async def _run() -> dict[str, int]:
-        result: dict[str, int] = {}
+    async def _run() -> dict[str, int | None]:
+        result: dict[str, int | None] = {}
         async with httpx.AsyncClient(timeout=30.0) as client:
             orats = OratsClient(client, base_url=settings.orats_base_url, token=token)
             for ticker in unique_tickers:
@@ -133,17 +137,21 @@ def _compute_actions(
     today: date,
     ideas: list[Idea],
     opens: list[Trade],
-    open_earnings_days: dict[str, int],
+    open_earnings_days: dict[str, int | None],
 ) -> list[str]:
     """Leitet deutsche Action-Strings aus den vier Datenquellen ab.
 
     Defensiv — Pflichtregel 5 sollte alle ideas mit `earnings_distance_days <= 8`
     schon ausfiltern. Wir warnen trotzdem, falls eine Override-Idea durchrutscht.
+
+    Slice-12: ``earnings_distance_days is None`` (Sentinel) wird hier still
+    übergangen — Pflichtregel 5 hat den Daten-Lücken-Fall bereits in der
+    deutschen Begründung sichtbar gemacht.
     """
     actions: list[str] = []
 
     for idea in ideas:
-        if idea.earnings_distance_days <= 8:
+        if idea.earnings_distance_days is not None and idea.earnings_distance_days <= 8:
             actions.append(
                 f"⚠ {idea.ticker}: Earnings in {idea.earnings_distance_days} "
                 "Tagen — keine Position eröffnen."

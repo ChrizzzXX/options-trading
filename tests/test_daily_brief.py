@@ -213,6 +213,45 @@ class TestActions:
             brief = csp.daily_brief()
         assert not any("emergency-close" in a for a in brief.actions)
 
+    def test_open_position_with_unknown_earnings_no_warn(self, stub_settings: Settings) -> None:
+        """Slice-12: ORATS-Sentinel auf einer offenen Position → kein
+        spurious emergency-close-WARN.
+
+        Vorher: ``nextErn='0000-00-00'`` führte zu ``daysToNextErn=0`` und
+        damit zu einer falschen "Earnings in 0 Tagen — emergency-close"-
+        Warnung jeden Tag, an dem ORATS den Sentinel zurückliefert. Mit der
+        Slice-12-Sentinel-Erkennung wird ``days_to_next_earn`` zu ``None``
+        (oder ``wksNextErn * 7``), und der ``days_left is not None``-Guard
+        in ``_compute_actions`` schluckt den ersten Fall still.
+        """
+        csp.log_trade(_idea_for_log(ticker="NOW", as_of=date(2026, 4, 28)))
+        # Sentinel-Payload: nextErn = '0000-00-00', wksNextErn = 0.
+        cores_sentinel = {
+            "data": [
+                {
+                    "ticker": "NOW",
+                    "pxAtmIv": 100.0,
+                    "sectorName": "Technology",
+                    "mktCap": 100_000_000.0,
+                    "ivPctile1y": 80.0,
+                    "daysToNextErn": 0,
+                    "nextErn": "0000-00-00",
+                    "wksNextErn": 0,
+                    "avgOptVolu20d": 120_000.0,
+                }
+            ]
+        }
+        with respx.mock(assert_all_called=False) as router:
+            router.get(re.compile(rf"^{re.escape(ORATS_BASE)}/cores")).mock(
+                return_value=httpx.Response(200, json=cores_sentinel)
+            )
+            router.get(re.compile(rf"^{re.escape(ORATS_BASE)}/strikes")).mock(
+                return_value=httpx.Response(200, json=_passing_now_strikes())
+            )
+            brief = csp.daily_brief()
+        # Kein emergency-close-WARN — Sentinel wurde stillschweigend ignoriert.
+        assert not any("emergency-close" in a for a in brief.actions)
+
     def test_orats_failure_for_open_position_skips_earnings_warn(
         self, stub_settings: Settings
     ) -> None:

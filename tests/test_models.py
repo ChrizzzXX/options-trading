@@ -7,6 +7,7 @@ auf jedem numerischen Feld von `MacroSnapshot` / `OratsCore` / `OratsStrike`.
 from __future__ import annotations
 
 import math
+from typing import ClassVar
 
 import pytest
 from pydantic import ValidationError
@@ -58,6 +59,85 @@ class TestOratsCoreValidators:
         """P9: Ticker werden case-insensitiv durch Uppercase-Normalisierung verglichen."""
         core = OratsCore(**{**_VALID_CORE_KW, "ticker": ticker_in})
         assert core.ticker == "NOW"
+
+
+class TestEarningsSentinelDetection:
+    """Slice-12: ORATS-`nextErn = '0000-00-00'`-Sentinel.
+
+    `daysToNextErn = 0` ist mehrdeutig — entweder "heute Earnings" oder
+    Zero-Fallback weil ORATS das Datum noch nicht aktualisiert hat. Der
+    `model_validator` löst den zweiten Fall auf:
+    - `wksNextErn > 0`: Distanz aus Wochen ableiten (1 Woche = 7 Tage).
+    - sonst: `days_to_next_earn = None`.
+    """
+
+    _RAW_VALID: ClassVar[dict[str, object]] = {
+        "ticker": "ACME",
+        "pxAtmIv": 100.0,
+        "sectorName": "Technology",
+        "mktCap": 100_000_000.0,
+        "ivPctile1y": 80.0,
+        "avgOptVolu20d": 120_000.0,
+    }
+
+    def test_real_next_ern_passes_through(self) -> None:
+        """Wenn `nextErn` ein reales Datum ist, bleibt `daysToNextErn` unverändert."""
+        core = OratsCore(
+            **self._RAW_VALID,
+            nextErn="2026-07-15",
+            daysToNextErn=42,
+            wksNextErn=6,
+        )
+        assert core.days_to_next_earn == 42
+
+    def test_real_next_ern_with_zero_days_means_today(self) -> None:
+        """Legitimer "heute Earnings"-Fall (0 Tage, valides Datum) bleibt 0."""
+        core = OratsCore(
+            **self._RAW_VALID,
+            nextErn="2026-04-29",
+            daysToNextErn=0,
+            wksNextErn=0,
+        )
+        assert core.days_to_next_earn == 0
+
+    def test_sentinel_with_wks_fallback_derives_days(self) -> None:
+        """Sentinel-Datum + `wksNextErn=12` → 84 Tage (12 * 7)."""
+        core = OratsCore(
+            **self._RAW_VALID,
+            nextErn="0000-00-00",
+            daysToNextErn=0,
+            wksNextErn=12,
+        )
+        assert core.days_to_next_earn == 84
+
+    def test_sentinel_without_wks_returns_none(self) -> None:
+        """Sentinel-Datum + `wksNextErn=0` → None (Datum unbekannt)."""
+        core = OratsCore(
+            **self._RAW_VALID,
+            nextErn="0000-00-00",
+            daysToNextErn=0,
+            wksNextErn=0,
+        )
+        assert core.days_to_next_earn is None
+
+    def test_sentinel_with_missing_wks_returns_none(self) -> None:
+        """Sentinel-Datum, `wksNextErn` komplett fehlend → None."""
+        core = OratsCore(
+            **self._RAW_VALID,
+            nextErn="0000-00-00",
+            daysToNextErn=0,
+        )
+        assert core.days_to_next_earn is None
+
+    def test_synthetic_kwargs_without_next_ern_unchanged(self) -> None:
+        """Snake-case-Kwargs ohne `nextErn` (Test-Mocks) → Validator no-op."""
+        core = OratsCore(**{**_VALID_CORE_KW, "days_to_next_earn": 30})
+        assert core.days_to_next_earn == 30
+
+    def test_explicit_none_for_days_allowed(self) -> None:
+        """``None`` direkt zu setzen ist zulässig (Sentinel-Form)."""
+        core = OratsCore(**{**_VALID_CORE_KW, "days_to_next_earn": None})
+        assert core.days_to_next_earn is None
 
 
 class TestOratsStrikeValidators:

@@ -182,7 +182,10 @@ class TestBuildIdea:
         assert result.data_freshness == "live"
 
     def test_fail_without_override_carries_reasons(self, default_settings: Settings) -> None:
-        # NOW-78 historisch fällt durch 3 Regeln (DTE 56, Earnings 0, Spread 0.15).
+        # NOW-78 historisch (Slice-12-Korrektur): zwei Regeln scheitern — DTE 56
+        # (Rule 3) und Spread 0,15 USD (Rule 6). Earnings (Rule 5) passiert nun,
+        # weil der ORATS-Sentinel ``nextErn='0000-00-00'`` über ``wksNextErn=12``
+        # zu 84 Tagen aufgelöst wird. Vorher zählte 0 als "heute Earnings" (falsch).
         result = build_idea(
             NOW_CORE,
             NOW_STRIKE,
@@ -195,11 +198,10 @@ class TestBuildIdea:
             override=False,
         )
         assert result.pflichtregeln_passed is False
-        assert len(result.reasons) == 3
+        assert len(result.reasons) == 2
         assert result.bypassed_rules == []
         assert result.reasons[0].startswith("Pflichtregel 3")
-        assert result.reasons[1].startswith("Pflichtregel 5")
-        assert result.reasons[2].startswith("Pflichtregel 6")
+        assert result.reasons[1].startswith("Pflichtregel 6")
 
     def test_fail_with_override_moves_reasons_to_bypassed(self, default_settings: Settings) -> None:
         result_no_ovr = build_idea(

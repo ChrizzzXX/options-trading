@@ -116,11 +116,23 @@ def rule_05_earnings_distance(
     portfolio: PortfolioSnapshot,
     settings: Settings,
 ) -> RuleResult:
-    """Pflichtregel 5: Earnings frühestens in earnings_min_days Tagen."""
+    """Pflichtregel 5: Earnings frühestens in earnings_min_days Tagen.
+
+    Slice-12: ``core.days_to_next_earn is None`` heißt "ORATS hat das Datum
+    nicht aktualisiert" (siehe Sentinel-Behandlung in ``OratsCore``). Wir
+    failen mit einer eigenen deutschen Begründung, damit der Anwender die
+    Daten-Lücke vom legitimen "0 = heute" unterscheiden kann. Die Regel
+    bleibt überschreibbar (``override=True``) — Pflichtregel-Invariante
+    bleibt erhalten, "unbekannt ≠ Verstoß"-aber-blockierend.
+    """
     threshold = settings.rules.earnings_min_days
-    if core.days_to_next_earn >= threshold:
+    days = core.days_to_next_earn
+    if days is None:
+        reason = "Pflichtregel 5 — Earnings-Datum bei Vendor nicht verfügbar — manuell prüfen"
+        return False, reason
+    if days >= threshold:
         return True, None
-    reason = f"Pflichtregel 5 — Earnings in {core.days_to_next_earn} Tagen (< {threshold})"
+    reason = f"Pflichtregel 5 — Earnings in {days} Tagen (< {threshold})"
     return False, reason
 
 

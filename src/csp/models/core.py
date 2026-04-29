@@ -8,7 +8,12 @@ Felder ohne Vorankündigung hinzu — daher `extra="ignore"` an der Vendor-Grenz
 Vendor-Gotchas (siehe project-context.md):
 - `mktCap` ist in **Tausend USD** (96524 = 96,5 Mio USD; 93302435 = 93,3 Mrd USD).
 - `ivPctile1y` ist die IVR (1-Jahres-IV-Perzentil), nicht 1-Monat.
-- `daysToNextErn = 0` bedeutet "heute Earnings" (Pflichtregel 5 Fail).
+- `daysToNextErn` ist mehrdeutig: ein zurückgegebener `0` bedeutet entweder
+  "heute Earnings" (legitimer Pflichtregel-5-Fail) ODER "ORATS hat das nächste
+  Earnings-Datum noch nicht aktualisiert" (Sentinel). Der Sentinel ist erkennbar
+  am Begleit-Feld `nextErn = '0000-00-00'`. Slice-12 unterscheidet beide Fälle:
+  Sentinel → falls `wksNextErn > 0`, leite Tage aus Wochen ab; sonst `None`
+  (Pflichtregel 5 → "Datum nicht verfügbar — manuell prüfen", überschreibbar).
 - ORATS hat zwei Sektor-Felder: `sector` (GICS-Subindustrie, z. B. "Application Software")
   und `sectorName` (GICS-Sektor, z. B. "Technology"). Pflichtregel 8 nutzt den Sektor
   (sectorName-Niveau), daher mappt unser `sector`-Feld auf `sectorName`.
@@ -27,6 +32,7 @@ nie nicht-finite Floats; NFR20-Determinismus ist transitiv abgesichert.
 from __future__ import annotations
 
 import math
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -69,21 +75,68 @@ class OratsCore(BaseModel):
         alias="ivPctile1y",
         description="1-Jahres-IV-Perzentil (entspricht ORATS ivPctile1y; ist die IVR).",
     )
-    days_to_next_earn: int = Field(
+    days_to_next_earn: int | None = Field(
         alias="daysToNextErn",
-        ge=0,
-        description="Tage bis zum nächsten Earnings; 0 = heute Earnings (Pflichtregel 5 Fail).",
+        description=(
+            "Tage bis zum nächsten Earnings. ``None`` heißt: ORATS hat das Datum "
+            "noch nicht aktualisiert (Sentinel ``nextErn='0000-00-00'`` ohne "
+            "verwertbaren ``wksNextErn``); Pflichtregel 5 markiert das als "
+            "manuell-prüfen statt 'heute Earnings'. ``0`` bleibt 'heute Earnings'."
+        ),
     )
     avg_opt_volu_20d: float = Field(
         alias="avgOptVolu20d",
         description="Durchschnittliches Optionsvolumen der letzten 20 Tage (ORATS liefert float).",
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def _resolve_earnings_sentinel(cls, data: Any) -> Any:
+        """Slice-12: ORATS-Earnings-Sentinel erkennen und auflösen.
+
+        Wenn ``nextErn == '0000-00-00'`` ist das Datum bei ORATS nicht
+        aktualisiert. ``daysToNextErn = 0`` ist dann *kein* "heute Earnings",
+        sondern ein Zero-Fallback. Wir versuchen einen Recovery-Pfad über
+        ``wksNextErn`` (in Wochen, ORATS-eigenes Feld); andernfalls setzen
+        wir ``daysToNextErn`` auf ``None``.
+
+        Eingabe-Formen:
+        - Roh-JSON von ORATS (camelCase: ``nextErn``, ``daysToNextErn``,
+          ``wksNextErn``).
+        - Synthetische Kwargs aus Tests (snake_case ``days_to_next_earn``,
+          ohne ``nextErn`` → keine Änderung).
+        """
+        if not isinstance(data, dict):  # pragma: no cover
+            # Defensiv: pydantic kann theoretisch ein Modell-Instance reichen.
+            # Praktisch immer dict; kein User-Pfad triggert den early-exit.
+            return data
+        next_ern = data.get("nextErn")
+        if next_ern != "0000-00-00":
+            return data
+        # Sentinel erkannt — daysToNextErn ist nicht vertrauenswürdig.
+        wks = data.get("wksNextErn")
+        patched = dict(data)
+        if isinstance(wks, int) and wks > 0:
+            # Annähern: 1 Woche = 7 Tage. Pflichtregel-5-Schwelle ist 8 Tage,
+            # also reicht Wochen-Granularität.
+            patched["daysToNextErn"] = wks * 7
+        else:
+            patched["daysToNextErn"] = None
+        return patched
+
     @field_validator("ticker")
     @classmethod
     def _normalise_ticker(cls, value: str) -> str:
         """Ticker werden uppercase normalisiert, damit Pflichtregel 9 case-insensitiv prüft."""
         return value.upper()
+
+    @field_validator("days_to_next_earn")
+    @classmethod
+    def _days_to_next_earn_nonneg(cls, value: int | None) -> int | None:
+        """``None`` ist erlaubt (Sentinel); konkrete Werte müssen ≥ 0 sein."""
+        if value is not None and value < 0:
+            raise ValueError(f"days_to_next_earn={value!r} muss ≥ 0 oder None sein")
+        return value
 
     @field_validator("under_price", "mkt_cap_thousands", "ivr", "avg_opt_volu_20d")
     @classmethod

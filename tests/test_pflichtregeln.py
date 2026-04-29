@@ -227,6 +227,24 @@ class TestRule05EarningsDistance:
         assert reason is not None
         assert "7 Tagen" in reason
 
+    def test_fails_when_earnings_distance_unknown(self, default_settings: Settings) -> None:
+        """Slice-12: ``days_to_next_earn=None`` → Fail mit eigener deutscher Begründung.
+
+        Differenziert "heute Earnings" (0) von "ORATS-Datum nicht verfügbar"
+        (None). Beide failen Rule 5, aber mit unterschiedlicher Diagnose.
+        Override-Pfad bleibt offen (siehe ``TestPassesCspFiltersOrchestrator``).
+        """
+        core = _core(days_to_next_earn=None)
+        passed, reason = rule_05_earnings_distance(
+            core, HAPPY_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
+        )
+        assert not passed
+        assert reason is not None
+        assert "Earnings-Datum bei Vendor nicht verfügbar" in reason
+        assert "manuell prüfen" in reason
+        # Der konkrete "X Tagen"-String darf nicht erscheinen, sonst verwirrt.
+        assert "Tagen" not in reason
+
 
 class TestRule06Liquidity:
     def test_passes_with_good_volume_and_tight_spread(self, default_settings: Settings) -> None:
@@ -468,6 +486,27 @@ class TestPassesCspFilters:
         assert any("Pflichtregel 2" in r for r in reasons)
         assert any("Override" in line for line in captured)
 
+    def test_override_bypasses_unknown_earnings_distance(
+        self,
+        default_settings: Settings,
+    ) -> None:
+        """Slice-12: ``override=True`` lässt auch den Sentinel-Fail durch.
+
+        Pflichtregel-Invariante respektiert: "unbekannt" failt strikt, aber der
+        Override-Pfad (laut Memory routine) bypasst es wie jede andere Regel.
+        """
+        core = _core(days_to_next_earn=None)
+        passed, reasons = passes_csp_filters(
+            core,
+            HAPPY_STRIKE,
+            NOW_MACRO,
+            PortfolioSnapshot(),
+            default_settings,
+            override=True,
+        )
+        assert passed
+        assert any("Earnings-Datum bei Vendor nicht verfügbar" in r for r in reasons)
+
     def test_override_with_zero_violations_is_silent(
         self,
         default_settings: Settings,
@@ -507,13 +546,19 @@ class TestNowRegression:
 
     Reconciliation: Der ursprüngliche synthetische Fixture (Premium 4,30,
     DTE 55, Earnings in 30 Tagen, Spread 0,04) war über-optimistisch. Real
-    bricht NOW-78 drei Pflichtregeln (3, 5, 6). Der Test asserted die
-    Wahrheit — jede Verbesserung der Daten ändert die Liste.
+    bricht NOW-78 zwei Pflichtregeln (3, 6).
+
+    Slice-12-Update: vorher waren es drei Brüche (3, 5, 6). Pflichtregel 5
+    (Earnings) galt fälschlich als "heute Earnings" (`daysToNextErn = 0`),
+    weil ORATS den Sentinel `nextErn = '0000-00-00'` mit Zero-Fallback
+    zurückliefert. Der NOW-Cassette-Datensatz hat aber `wksNextErn = 12`
+    (12 Wochen ≈ 84 Tage bis zum nächsten Earnings) — die wahre Distanz
+    passiert die 8-Tage-Schwelle problemlos. Der Test dokumentiert jetzt
+    die korrigierte Wahrheit.
     """
 
     EXPECTED_FAILURE_REASONS: ClassVar[list[str]] = [
         "Pflichtregel 3 — DTE 56 außerhalb [30, 55]",
-        "Pflichtregel 5 — Earnings in 0 Tagen (< 8)",
         "Pflichtregel 6 — Liquidität ungenügend: Spread 0,15 USD > 0,05 USD",
     ]
 
@@ -531,7 +576,8 @@ class TestNowRegression:
         )
         assert not passed
         assert reasons == self.EXPECTED_FAILURE_REASONS, (
-            f"Erwartete genau 3 Pflichtregel-Brüche, sah:\n  reasons: {reasons}\n"
+            f"Erwartete genau 2 Pflichtregel-Brüche (Slice-12 Earnings-Fix), sah:\n"
+            f"  reasons: {reasons}\n"
             f"  expected: {self.EXPECTED_FAILURE_REASONS}"
         )
 
@@ -545,7 +591,9 @@ class TestNowRegression:
         assert now_core.ticker == "NOW"
         assert now_core.under_price == 89.84
         assert now_core.ivr == 96.0
-        assert now_core.days_to_next_earn == 0
+        # Slice-12: Sentinel-Auflösung — `wksNextErn=12` → 12*7 = 84 Tage.
+        # Vor Slice 12 war hier 0 (fälschlich als "heute Earnings" interpretiert).
+        assert now_core.days_to_next_earn == 84
         assert now_core.sector == "Technology"
         # /hist/strikes 2026-04-24 — Strike 78, DTE 56, putBid 2.70, putAsk 2.85
         assert now_strike.strike == 78.0
