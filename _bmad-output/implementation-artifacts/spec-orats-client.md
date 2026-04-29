@@ -2,7 +2,7 @@
 title: 'ORATS Client + Real NOW-78 Cassette'
 type: 'feature'
 created: '2026-04-29'
-status: 'in-review'
+status: 'done'
 implementation_commit: 'f7068e0'
 baseline_commit: '1e7f126'
 context:
@@ -136,3 +136,68 @@ context:
 - `uv run pytest -k now_regression -v` — runs against real cassette
 - `uv run python -c "import asyncio, csp; print(csp.orats_health_check('NOW'))"` — prints parsed `OratsCore` (live HTTP, sanity check; not part of CI)
 - `! grep -r "${ORATS_TOKEN}" tests/cassettes/` — exits non-zero (no matches; token not leaked into recorded YAML)
+
+## Suggested Review Order
+
+**The vendor I/O & retry path (start here)**
+
+- Public surface — slice 2 adds `OratsClient`, `orats_health_check`, `ORATSDataError`, `ORATSEmptyDataError` to `import csp`.
+  [`__init__.py`](../../src/csp/__init__.py)
+
+- DI'd async client; vendor methods return parsed Pydantic models, not raw dicts.
+  [`orats.py:99`](../../src/csp/clients/orats.py#L99)
+
+- Retry loop with transport-error coverage — `httpx.RequestError` retried with 1 / 2 / 4 s backoff (P1).
+  [`orats.py:184`](../../src/csp/clients/orats.py#L184)
+
+- Regex-based redaction for query params + Bearer headers, applied to URL **and** body (P2).
+  [`orats.py:53`](../../src/csp/clients/orats.py#L53)
+
+- Put-delta clamp `[-1, 1]` before `delta - 1` derivation (P6); D7 documents the dividend-yield approximation.
+  [`orats.py:87`](../../src/csp/clients/orats.py#L87)
+
+- Vendor methods: `cores()`, `strikes()` (live + `/hist/`), `ivrank()`, `summaries()`.
+  [`orats.py:121`](../../src/csp/clients/orats.py#L121)
+
+**Configuration discipline (FR12 + NFR8)**
+
+- `Settings.orats_token: SecretStr` + `orats_base_url` sourced from `.env`; replaces `os.environ` access in `health.py` (P3).
+  [`config.py:107`](../../src/csp/config.py#L107)
+
+- Global Loguru filter scrubs `token=`, `apikey=`, `Authorization: Bearer …`, `IVOLATILITY_API_KEY=` from every emitted record (P4 / NFR8).
+  [`_logging.py:43`](../../src/csp/_logging.py#L43)
+
+- `orats_health_check("NOW") -> OratsCore` — the public sync wrapper; reads creds via `Settings.load()`.
+  [`health.py:27`](../../src/csp/health.py#L27)
+
+**Error types**
+
+- `ORATSDataError(status, body, url_redacted)` plus the new `ORATSEmptyDataError` subclass for `data == []` semantics (P8).
+  [`exceptions.py:14`](../../src/csp/exceptions.py#L14)
+
+**Determinism contract (the keystone)**
+
+- Real-data verdict — NOW-78 on 2026-04-24 fails rules 3, 5, 6 with the exact German messages. No patching to make it pass.
+  [`test_pflichtregeln.py:514`](../../tests/test_pflichtregeln.py#L514)
+
+- Cassette factory: parses YAML at module import, honours both list-and-string `Content-Encoding` (P7).
+  [`now_2026_04_24.py:39`](../../tests/fixtures/now_2026_04_24.py#L39)
+
+- Recorded cassettes — ground truth for what ORATS returns; reviewer's anchor for "is this parser realistic?".
+  [`tests/cassettes/orats/`](../../tests/cassettes/orats/)
+
+**Test surface (new)**
+
+- Retry-policy unit tests via `respx`: 4xx immediate-raise, 5xx ×3 then raise, 429-then-200, transport-error retry, token never in messages.
+  [`test_orats_client.py:168`](../../tests/test_orats_client.py#L168)
+
+- Redaction unit tests: short tokens, URL-encoded tokens, Bearer-header scrubbing, body-leak path, put-delta clamp.
+  [`test_orats_client.py:86`](../../tests/test_orats_client.py#L86)
+
+- Cassette hygiene widened: URL-encoded tokens, Bearer headers, fail-loud when cassettes exist but env unset (P5).
+  [`test_cassette_hygiene.py:69`](../../tests/test_cassette_hygiene.py#L69)
+
+**Bootstrap & ergonomics**
+
+- `addopts = ["-m", "not recording"]` excludes recording tests from `pytest -q`; description trimmed of slice-1 verbiage.
+  [`pyproject.toml`](../../pyproject.toml)
