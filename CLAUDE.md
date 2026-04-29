@@ -11,27 +11,31 @@ Python research library for German Cash-Secured-Put options trading. Solo projec
 
 When PRD, project-context, and a spec disagree: **PRD wins, then project-context, then spec.** Surface the conflict to Chris before proceeding.
 
-## State as of 2026-04-29 (after slice 3)
+## State as of 2026-04-29 (after slice 4)
 
-Three slices shipped on `main` and pushed to `origin` (`https://github.com/ChrizzzXX/options-trading.git`, **private repo**).
+Four slices shipped on `main` (`https://github.com/ChrizzzXX/options-trading.git`, **private repo**). Slice 4 not yet pushed at the time of this handoff (commit `bfceb53`).
 
 - **Slice 1 — Pflichtregeln gate + bootstrap** (`_bmad-output/implementation-artifacts/spec-pflichtregeln-gate.md`, status `done`). Public surface: `csp.passes_csp_filters`, `Settings`, 4 models, exceptions. 100 % coverage on `pflichtregeln.py`.
 - **Slice 2 — ORATS client + real NOW cassette** (`_bmad-output/implementation-artifacts/spec-orats-client.md`, status `done`). Adds `csp.OratsClient`, `csp.orats_health_check`, `ORATSDataError`, `ORATSEmptyDataError`. 100 % coverage on `clients/orats.py`. Closed deferred D1.
 - **Slice 3 — `csp.idea(...)` single-ticker idea** (`_bmad-output/implementation-artifacts/spec-idea-singleticker.md`, status `done`). Adds `csp.idea`, `csp.Idea`. **Amended PRD FR13**: return shape `Idea | None` → always-`Idea` (override-pathway annotation lives on the model: `pflichtregeln_passed: bool` + `reasons` + `bypassed_rules`). 100 % coverage on `idea.py`, `strategies/csp.py`, `models/idea.py`. Settings gained `[macro] vix_close` (placeholder until FMP-client slice — D13/D17).
+- **Slice 4 — `csp.scan(...)` universe-wide scan** (`_bmad-output/implementation-artifacts/spec-scan-universe.md`, status `done`, commit `bfceb53`). Adds `csp.scan(max_results=10, *, dte=45, target_delta=-0.20, as_of=None) -> list[Idea]`. Composes `csp.idea` over `settings.universe.allowed_tickers` via single `asyncio.gather()` (NFR5) on ONE shared `httpx.AsyncClient` + `OratsClient`. Per-ticker `ORATSDataError`/`ORATSEmptyDataError` skipped with redacted WARN (NFR14); rule-failers filtered (FR14); ranked yield-DESC + ticker-ASC (FR17/NFR20); deduped tickers; `as_of`/`max_results`/empty-universe/whitespace-token validated at boundary. Refactor: `_fetch_and_build_idea(orats, ticker, *, ..., effective_as_of)` extracted from slice 3's `_async_idea` so both public paths share a caller-resolved date stamp. **No `strategy` param** (premature abstraction deferred to Growth); **no `override` param** (FR14 mandates Pflichtregeln-pass; override stays per-idea). 100 % coverage on `scan.py`; `idea.py` still 100 % post-refactor.
 
-Tests: **164 default + 3 opt-in `recording`** (gated by `-m recording`). Overall coverage 99.80 %. ruff + mypy strict clean.
+Tests: **183 default + 3 opt-in `recording`** (gated by `-m recording`). Overall coverage 99.81 %. ruff + mypy strict clean.
 
-PRD has 10 public library functions; **2 done** (`passes_csp_filters`, `idea`). 8 to go: `daily_brief`, `scan`, `list_open_positions`, `log_trade`, `close_trade`, `get_idea`, `list_ideas`, `export_to_sheets`.
+PRD has 10 public library functions; **3 done** (`passes_csp_filters`, `idea`, `scan`). 7 to go: `daily_brief`, `list_open_positions`, `log_trade`, `close_trade`, `get_idea`, `list_ideas`, `export_to_sheets`.
 
 **Reconciliation truth:** `pytest -k now_regression` (PRD FR29 / NFR18) asserts that real NOW-78 on 2026-04-24 **fails 3 of 9 rules** (DTE 56, earnings same day, spread 0.15 USD). The real verdict is the determinism contract. Chris confirmed: `override=True` is routine practice (see project memory `project_override_routine.md`). Slice 3 pinned the override-pathway design: rules 1, 3-9 are bypass-able via `override=True`; **Rule 2 (delta band) is structurally unbypassable** because `_select_strike` pre-filters by the band — to take a Rule-2-violating idea, relax `delta_min`/`delta_max` in `settings.toml` for that run.
 
 ## Next slice (recommended)
 
-**`csp.scan(strategy="csp", max_results=10) -> list[Idea]`** — PRD FR14, FR17. Universe-wide scan composing `csp.idea` per ticker, parallelized via `asyncio.gather()`, ranked by annualized yield with deterministic tie-break (FR17). Why next: reuses slice-3 surface; doesn't require new persistence; closes the "discovery" half of daily-brief; `csp.daily_brief` then becomes a thin composition over `scan` + macro + open-positions.
+**`csp.daily_brief() -> DailyBrief`** — PRD FR3, FR15, FR18. Thin composition: `scan(max_results=N)` + `MacroSnapshot` (still static via `[macro] vix_close` until FMP slice) + open-positions placeholder (`[]` until lifecycle slice) → a single Pydantic `DailyBrief` model with `format_fbg_mail()` for German user-facing string. Why next: closes the "happy Monday" journey end-to-end with what's already shipped; turns `csp.scan`'s ranked list into Chris's actual daily decision-flow output; surfaces FR15 `Idea.format_fbg_mail()` (D12) which is independently useful for the `idea` and `scan` consumers too.
 
-Alternative if you want DuckDB earlier: jump to **`csp.log_trade` + `csp.close_trade`** to land persistence (closes D3, D14, D19), then `scan`/`daily_brief` can attach sector-exposure-delta (D15) and override-history.
+Alternatives:
+- **DuckDB persistence first** — `csp.log_trade` + `csp.close_trade` to close D3/D14/D19 and unblock `sector_exposure_delta_pct` (D15) on `Idea`. Worthwhile if you want override history queryable before adding more discovery surface.
+- **FMP client slice** — replace static `[macro] vix_close` with live VIX (closes D13/D17). Smallest blast radius; lets `daily_brief` ship with live macro out of the gate.
+- **IVolatility client slice** — opens EU dispatch on `scan` (D22); requires new universe-loader shape (`region`/`vendor_symbol` columns).
 
-To start: run `/bmad-quick-dev` in a fresh session and reference this CLAUDE.md, the PRD (FR14, FR17, FR18 if going for `daily_brief`; FR21–24 if going lifecycle-first), and `_bmad-output/implementation-artifacts/deferred-work.md` (D2-D5, D7-D11, D13-D21 active).
+To start: run `/bmad-quick-dev` in a fresh session and reference this CLAUDE.md, the PRD (FR3/FR15/FR18 for `daily_brief`; FR21-24 if going lifecycle-first; FR1 for FMP-macro), and `_bmad-output/implementation-artifacts/deferred-work.md` (D2-D5, D7-D17, D19-D22, D24-D28 active; D18, D20-D21, D23 also active but lower-priority).
 
 ## Hard rules (don't violate without explicit human approval)
 
@@ -71,7 +75,7 @@ Excluded by design: `requests`, web frameworks (React/Vue/Streamlit/FastAPI), br
 3. `uv run mypy --strict src`
 4. `uv run pytest -q` (cassettes only, ≤ 30 s)
 
-Coverage: ≥ 80 % overall; 100 % required for `src/csp/filters/pflichtregeln.py`, `src/csp/strategies/csp.py`, `src/csp/idea.py`, `src/csp/models/idea.py`, and (future) `src/csp/lifecycle/state_machine.py`. Today: 99.80 % overall.
+Coverage: ≥ 80 % overall; 100 % required for `src/csp/filters/pflichtregeln.py`, `src/csp/strategies/csp.py`, `src/csp/idea.py`, `src/csp/scan.py`, `src/csp/models/idea.py`, and (future) `src/csp/lifecycle/state_machine.py`. Today: 99.81 % overall.
 
 ## Workflow
 
