@@ -36,3 +36,8 @@ logs/
 .vscode/
 .idea/
 *.swp
+
+# BMad / Claude tooling installations (out-of-tree dev tools)
+_bmad/
+.agents/
+.claude/
