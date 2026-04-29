@@ -1,0 +1,40 @@
+Ticker,Company,Sector,ETF_Bucket,In_Portfolio,Stueck_Aktuell,Avg_Optionsvol_Tag_Approx,Min_MarketCap_Met,Optionable_US,Hauptuniversum,Erweitert,Makro_Thema,CSP_Eignung,Notiz
+NOW,ServiceNow Inc.,Application Software,XLK,Ja,6699,116000,Ja,Ja,Ja,Nein,KI/Enterprise SW,Voll,Kerntitel CSP - bereits gehalten
+MSFT,Microsoft Corp.,Hyperscaler,XLK,Ja,1188,1500000,Ja,Ja,Ja,Nein,KI/Hyperscaler,Voll,Kerntitel CSP - hoechste Liquiditaet
+AVGO,Broadcom Inc.,Semiconductor,XLK,Ja,1235,400000,Ja,Ja,Ja,Nein,KI-Infrastruktur,Voll,Kerntitel CSP - KI-Infrastruktur
+TSM,Taiwan Semiconductor ADR,Semiconductor,XLK,Ja,764,200000,Ja,Ja,Ja,Nein,KI-Infrastruktur,Voll,Kerntitel CSP - ADR
+JPM,JPMorgan Chase,Financials,XLF,Nein,0,500000,Ja,Ja,Ja,Nein,Financials,Voll,Kerntitel CSP - Diversifikation
+XOM,ExxonMobil,Energy,XLE,Nein,0,250000,Ja,Ja,Ja,Nein,Energy/Hormuz,Voll,Kerntitel CSP - Energy-Hedge
+LMT,Lockheed Martin,Defense,XLI,Nein,0,80000,Ja,Ja,Ja,Nein,Defense/Geopolitik,Voll,Kerntitel CSP - Defense
+GOOGL,Alphabet Class A,Hyperscaler,XLC,Ja,829,800000,Ja,Ja,Ja,Nein,KI/Hyperscaler,Voll,Kerntitel CSP
+META,Meta Platforms,Platform,XLC,Ja,400,1000000,Ja,Ja,Ja,Nein,KI/Hyperscaler,Voll,Kerntitel CSP
+AMZN,Amazon.com,Hyperscaler,XLY,Ja,380,1500000,Ja,Ja,Ja,Nein,KI/Hyperscaler,Voll,Kerntitel CSP
+CRM,Salesforce,Enterprise SW,XLK,Ja,2962,150000,Ja,Ja,Ja,Nein,Enterprise SW,Voll,Erweiterung Kerntitel
+SPY,SPDR S&P 500 ETF,Index ETF,SPY,Nein,0,3500000,Ja,Ja,Ja,Nein,Markt-Core,Voll,Core ETF-CSP
+QQQ,Invesco QQQ Trust,Index ETF,QQQ,Nein,0,2200000,Ja,Ja,Ja,Nein,Markt-Core,Voll,Core ETF-CSP
+MELI,MercadoLibre,Platform EM,XLY,Ja,189,40000,Ja,Ja,Nein,Ja,EM/Plattform,Bedingt,Erweitertes Universum
+DDOG,Datadog,Enterprise SW,XLK,Ja,2395,55000,Ja,Ja,Nein,Ja,Enterprise SW,Voll,Erweitertes Universum
+ANET,Arista Networks,AI Infrastructure,XLK,Ja,1700,80000,Ja,Ja,Nein,Ja,KI-Infrastruktur,Voll,Erweitertes Universum
+MRVL,Marvell Technology,Semiconductor,XLK,Nein,0,90000,Ja,Ja,Nein,Ja,KI-Infrastruktur,Voll,Erweitertes Universum
+SNPS,Synopsys,Semiconductor Design,XLK,Ja,778,50000,Ja,Ja,Nein,Ja,KI-Infrastruktur,Voll,Erweitertes Universum
+NVDA,NVIDIA,Semiconductor,XLK,Nein,0,4000000,Ja,Bedingt,Nein,Ja,KI-Infrastruktur,Bedingt,Hohe Vola - vorsichtige Strikes
+WDAY,Workday,Enterprise SW,XLK,Nein,0,60000,Ja,Bedingt,Nein,Ja,Enterprise SW,Bedingt,Watchlist
+SNOW,Snowflake,Enterprise SW,XLK,Nein,0,80000,Ja,Bedingt,Nein,Ja,Enterprise SW,Bedingt,Watchlist - hoeheres Beta
+GS,Goldman Sachs,Financials,XLF,Nein,0,200000,Ja,Bedingt,Nein,Ja,Financials,Voll,Watchlist
+MS,Morgan Stanley,Financials,XLF,Nein,0,150000,Ja,Bedingt,Nein,Ja,Financials,Voll,Watchlist
+CVX,Chevron,Energy,XLE,Nein,0,150000,Ja,Bedingt,Nein,Ja,Energy/Hormuz,Voll,Watchlist
+OXY,Occidental,Energy,XLE,Nein,0,150000,Ja,Bedingt,Nein,Ja,Energy/Hormuz,Voll,Watchlist
+RTX,RTX Corp.,Defense,XLI,Nein,0,80000,Ja,Bedingt,Nein,Ja,Defense/Geopolitik,Voll,Watchlist
+NOC,Northrop Grumman,Defense,XLI,Nein,0,40000,Ja,Bedingt,Nein,Ja,Defense/Geopolitik,Bedingt,Watchlist
+LNG,Cheniere Energy,Energy/LNG,XLE,Nein,0,12000,Ja,Bedingt,Nein,Ja,Hormuz/LNG-Gap,Bedingt,NEU Hormuz-Master - Strong Buy 100% Analysten - CSP nur bei IVR>=60 wegen Liquiditaet
+WMB,Williams Companies,Energy/Midstream,XLE,Nein,0,15000,Ja,Bedingt,Nein,Ja,LNG-Pipeline/Take-or-Pay,Bedingt,NEU Hormuz-Master - 95% Take-or-Pay - Direktaktie bevorzugt
+KMI,Kinder Morgan,Energy/Midstream,XLE,Nein,0,20000,Ja,Bedingt,Nein,Ja,US-Gas-Backbone,Bedingt,NEU Hormuz-Master - Beimischung
+CF,CF Industries,Materials/Chemicals,XLB,Nein,0,8000,Ja,Bedingt,Nein,Ja,Hormuz/Energy-Spread,Bedingt,NEU Hormuz-Master - bevorzugt Direktaktie unter 105 USD - CSP nur bei Earnings-IV-Spike
+NTR,Nutrien,Materials/Chemicals,XLB,Nein,0,10000,Ja,Bedingt,Nein,Ja,Kali/Sanktions-Spread,Bedingt,NEU Hormuz-Master - Diversifikation zu CF
+TTE,TotalEnergies ADR,Energy,XLE,Nein,0,5000,Ja,Bedingt,Nein,Ja,Energy/Hormuz,Bedingt,Im Portfolio (Aktien) - CSP unattraktiv wegen ADR-Liquiditaet
+PG,Procter & Gamble,Consumer Staples,XLP,Nein,0,30000,Ja,Bedingt,Nein,Ja,Defensiv/Rezession,Bedingt,NEU Defensiv-Anker - Dividend King
+KO,Coca-Cola,Consumer Staples,XLP,Nein,0,40000,Ja,Bedingt,Nein,Ja,Defensiv/Rezession,Bedingt,NEU Defensiv-Anker
+WMT,Walmart,Consumer Staples,XLP,Nein,0,50000,Ja,Ja,Nein,Ja,Defensiv/Rezession,Voll,NEU Defensiv-Anker - hoechste Liquiditaet bei Staples
+COST,Costco,Consumer Staples,XLP,Nein,0,40000,Ja,Bedingt,Nein,Ja,Defensiv/Rezession,Bedingt,NEU Defensiv-Anker
+XLP,SPDR Consumer Staples ETF,Sector ETF,XLP,Nein,0,80000,Ja,Ja,Nein,Ja,Defensiv-Sleeve,Voll,NEU ETF-CSP fuer Defensiv-Aufbau
+XLE,SPDR Energy Sector ETF,Sector ETF,XLE,Nein,0,200000,Ja,Ja,Nein,Ja,Hormuz/Energy-Sleeve,Voll,NEU ETF-CSP fuer Energie-Exposure

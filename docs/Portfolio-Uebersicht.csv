@@ -1,0 +1,40 @@
+Asset_Klasse,Sub_Kategorie,Position,ISIN,Ticker,Sektor,Stueck,Einstand_EUR,Kurswert_EUR,Anteil_Pct_Bewertet,CSP_Eligible,Anmerkung
+Cash,Liquiditaet,Cash Tagesgeld FBG-Konto,,,,,,2600000.00,16.26,Nein,Sofort verfuegbar - Dispokapital fuer CSP
+Anleihen,Einzelposition,Allianz SUB 2024-2054 Nachranganleihe,DE000A3823H4,,Versicherung,,,418420.00,2.62,Nein,Direktanleihe
+Anleihen-extern,FBG-Verwaltung,FBG Anleihenportfolio extern verwaltet,,,,,,5200000.00,,Nein,Separat ausgewiesen - nicht Teil der bewerteten 15.99 Mio EUR
+Festanlagen,Sparkassenbriefe,Sparkassenbriefe gebunden bis 2034,,,,,,3000000.00,18.77,Nein,Illiquide bis 2034 - nicht operativ verfuegbar
+Sachwerte,Edelmetalle,Gold 100g ETP Boerse Stuttgart,DE000EWG2LD7,,Edelmetall,12000,1503982.00,1614540.00,10.10,Nein,Physisches Gold ETP
+Sachwerte,Rohstoffe,Sprott Uranium Trust ETP Hanetf,XS2937253818,,Rohstoff,56179,503105.00,495499.00,3.10,Nein,Uran-ETP
+Aktien,Dividenden Value,TotalEnergies SE,FR0000120271,TTE,Energie,3118,174631.00,233507.00,1.46,Bedingt,Energie-Hedge - in Watchlist fuer CSP
+Aktien,Dividenden Value,Allianz SE,DE0008404005,ALV,Versicherung,343,68211.00,135984.00,0.85,Nein,DE-Aktie - liquide Optionen begrenzt
+Aktien,Dividenden Value,Muenchener Rueckversicherung,DE0008430026,MUV2,Rueckversicherung,197,56198.00,112617.00,0.70,Nein,DE-Aktie
+Aktien,Dividenden Value,Sanofi SA,FR0000120578,SNY,Pharma,1292,106097.00,106228.00,0.66,Nein,EU-Aktie
+Aktien,Dividenden Value,Ahold Delhaize,NL0011794037,AD,Lebensmittelhandel,2572,105487.00,105941.00,0.66,Nein,EU-Aktie
+Aktien,Dividenden Value,Realty Income,US7561091049,O,Net-Lease-REIT,1876,105748.00,103668.00,0.65,Nein,REIT - geringere Optionsliquiditaet
+Aktien,Dividenden Value,American Tower,US03027X1000,AMT,Tower-Data-Center-REIT,663,104222.00,102765.00,0.64,Nein,REIT
+Aktien,Dividenden Value,Mondelez International,US6092071058,MDLZ,Snacks-Confectionery,2070,105613.00,101378.00,0.63,Nein,Consumer Staples
+Aktien,Dividenden Value,Vinci S.A.,FR0000125486,DG,Infrastruktur,742,106046.00,99873.00,0.62,Nein,EU-Aktie
+Aktien,Dividenden Value,Danone S.A.,FR0000120644,BN,Nutrition-Dairy,1456,105847.00,98513.00,0.62,Nein,EU-Aktie
+Aktien,Dividenden Value,AbbVie Inc.,US00287Y1091,ABBV,Pharma,549,103635.00,95669.00,0.60,Bedingt,US-Pharma - mittlere Optionsliquiditaet
+Aktien,Dividenden Value,Imperial Brands,GB0004544929,IMB,Tabak,2790,104249.00,89559.00,0.56,Nein,UK-Aktie
+Aktien,Growth-KI,ServiceNow Inc.,US81762P1021,NOW,Enterprise SW,6699,575126.00,579196.00,3.62,Ja,Hochliquide Optionen - Kerntitel CSP
+Aktien,Growth-KI,Salesforce Inc.,US79466L3024,CRM,Enterprise SW,2962,476003.00,473683.00,2.96,Ja,Hochliquide Optionen - Kerntitel CSP
+Aktien,Growth-KI,Microsoft Corp.,US5949181045,MSFT,Hyperscaler,1188,402440.00,424235.00,2.65,Ja,Hochliquide Optionen - Kerntitel CSP
+Aktien,Growth-KI,Broadcom Inc.,US11135F1012,AVGO,Design-Silicon,1235,347563.00,418974.00,2.62,Ja,Hochliquide Optionen - Kerntitel CSP
+Aktien,Growth-KI,Mastercard Inc. Class A,US57636Q1040,MA,Payments,720,324725.00,316728.00,1.98,Ja,Hochliquide Optionen
+Aktien,Growth-KI,Synopsys Inc.,US8716071076,SNPS,Design-Silicon,778,285509.00,305365.00,1.91,Ja,Liquide Optionen
+Aktien,Growth-KI,MercadoLibre Inc.,US58733R1023,MELI,Platform-EM,189,287936.00,300888.00,1.88,Bedingt,Erweitertes Universum - hoeheres Beta
+Aktien,Growth-KI,Datadog Inc.,US23804L1035,DDOG,Enterprise SW,2395,225085.00,265797.00,1.66,Bedingt,Erweitertes Universum
+Aktien,Growth-KI,Arista Networks,US0404132054,ANET,AI-Infrastructure,1700,189835.00,244664.00,1.53,Bedingt,Erweitertes Universum
+Aktien,Growth-KI,Taiwan Semiconductor ADR,US8740391003,TSM,Design-Silicon,764,253316.00,239896.00,1.50,Ja,Hochliquide Optionen - Kerntitel CSP
+Aktien,Growth-KI,Alphabet Inc. Class A,US02079K3059,GOOGL,Hyperscaler,829,220195.00,238711.00,1.49,Ja,Hochliquide Optionen - Kerntitel CSP
+Aktien,Growth-KI,Meta Platforms Class A,US30303M1027,META,Platform-EM,400,220725.00,229840.00,1.44,Ja,Hochliquide Optionen - Kerntitel CSP
+Aktien,Growth-KI,Amazon.com Inc.,US0231351067,AMZN,Hyperscaler,380,51028.00,82517.00,0.52,Ja,Hochliquide Optionen - Kerntitel CSP
+Aktien,Growth-KI,Nestle N.A.,CH0038863350,NESN,Consumer,530,50165.00,43911.00,0.27,Nein,CH-Aktie
+Krypto,ETP,21Shares Bitcoin ETP OE,CH0454664001,,Krypto-BTC,46620,870768.00,1007924.00,6.30,Nein,Krypto-ETP - keine Optionen
+Krypto,ETP,CoinShares Physical Staked ETH,GB00BLD4ZM24,,Krypto-ETH,16096,899572.00,957710.00,5.99,Nein,Krypto-ETP
+Krypto,ETP,CoinShares Physical Staked SOL,GB00BNRRFY34,,Krypto-SOL,19092,155296.00,157566.00,0.99,Nein,Krypto-ETP
+Krypto,ETP,21Shares Chainlink ETP,CH1100083471,,Krypto-LINK,9756,77264.00,80044.00,0.50,Nein,Krypto-ETP
+Krypto,ETP,WisdomTree Physical XRP,GB00BRXHQ425,,Krypto-XRP,1622,77206.00,79105.00,0.49,Nein,Krypto-ETP
+Sonstige,Immobilien,Grundbesitz Fokus DE Fonds,DE0009807081,,Immo-Fonds,500,,25685.00,0.16,Nein,Offener Immofonds
+Sonstige,Gesperrt,Mittelstandsfonds IL M,LU0974225590,,Mittelstand,5370,,,,Nein,Kein Kurs verfuegbar - Steuerlicher Verlustvortrag 130.000 EUR
