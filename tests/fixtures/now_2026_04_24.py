@@ -1,38 +1,92 @@
 """NOW-78-Strike-Fixture vom 2026-04-24 — Regressionsanker (PRD FR29 / NFR18).
 
-Solange der echte ORATS-Cassette nicht aufgenommen ist, dient dieser Fixture als
-Surrogat. Jedes Feld trägt einen Quellen-Tag, damit beim Joinen des Cassettes
-nachvollziehbar ist, welche Werte bestätigt vs. plausibel-extrapoliert sind.
+Quelle der Wahrheit sind die ORATS-Cassetten:
+- `tests/cassettes/orats/hist_cores_NOW_20260424.yaml` (recorded 2026-04-29)
+- `tests/cassettes/orats/hist_strikes_NOW_20260424.yaml` (recorded 2026-04-29)
 
-Quellen-Schlüssel:
-- PRD §X.Y: direkt aus der PRD belegt
-- brief §X.Y: aus dem archivierten Brief belegt
-- inferred-plausible: nicht in PRD/Brief gepinnt, aber konsistent mit Journey 5
+Beim Modul-Import werden die YAML-Cassetten geladen, die gzip-kodierten Bodies
+dekompiriert und die ersten Items per Pydantic-Modellen geparst. Das macht den
+Fixture eine reine Funktion über die Cassette-Daten — Re-Recording (mit
+explicit-reason commit) ändert die Fixture-Werte automatisch mit.
+
+Reconciliation gegen die ursprünglichen synthetischen Werte (Spec Change Log):
+- spot war 85.0 (synth) → 89.84 (real, pxAtmIv)
+- premium-Mid war 4.30 (PRD §Journey 5) → 2.775 (real, putBid 2.70 / putAsk 2.85)
+- spread war 0.04 (synth) → 0.15 (real) — bricht Pflichtregel 6
+- daysToNextErn war 30 (synth) → 0 (real, "Earnings heute") — bricht Pflichtregel 5
+- DTE war 55 (PRD) → 56 (real, 2026-04-24 → 2026-06-18) — bricht Pflichtregel 3
+- IVR 94 (PRD) → 96 (real, ivPctile1y) — kein Bruch
+- mkt_cap_thousands 170_000_000 (synth) → 93_972_640 (real) — passt weiterhin
+- sector "Technology" (synth) ≡ sectorName "Technology" (real, ORATS-Mapping)
 """
 
 from __future__ import annotations
 
+import gzip
+import json
+from pathlib import Path
+from typing import Any
+
+import yaml
+
 from csp.models.core import MacroSnapshot, OratsCore, OratsStrike, PortfolioSnapshot
 
-NOW_CORE = OratsCore(
-    ticker="NOW",  # PRD §Journey 5 (NOW idea, 2026-04-24)
-    under_price=85.0,  # inferred-plausible: Strike 78 muss ≥ 8 % OTM erfüllen → Spot ≥ ≈84,78
-    sector="Technology",  # inferred-plausible: ServiceNow GICS-Sektor
-    mkt_cap_thousands=170_000_000.0,  # inferred-plausible: ServiceNow ≈170 Mrd USD (≥ 50 Mrd)
-    ivr=94.0,  # PRD §Journey 5 (IVR 94)
-    days_to_next_earn=30,  # inferred-plausible: ≥ 8 Tage (Pflichtregel 5)
-    avg_opt_volu_20d=120_000,  # inferred-plausible: ≥ 50 000 (Pflichtregel 6)
-)
+CASSETTE_DIR = Path(__file__).resolve().parents[1] / "cassettes" / "orats"
+HIST_CORES_CASSETTE = CASSETTE_DIR / "hist_cores_NOW_20260424.yaml"
+HIST_STRIKES_CASSETTE = CASSETTE_DIR / "hist_strikes_NOW_20260424.yaml"
 
-NOW_STRIKE = OratsStrike(
-    strike=78.0,  # PRD §Journey 5 (Strike 78)
-    delta=-0.22,  # spec §I/O-Matrix (delta -0,22 im Band [-0,25, -0,18])
-    dte=55,  # PRD §Journey 5 (DTE 55)
-    put_ask=4.32,  # inferred-plausible: Mid ≈ Premium 4,30 (PRD §Journey 5), Spread 0,04
-    put_bid=4.28,  # inferred-plausible: siehe put_ask
-)
 
-# VIX 18,7 entspricht der I/O-Matrix-Vorgabe — Pflichtregel 1 passt nur via IVR-Schenkel.
-NOW_MACRO = MacroSnapshot(vix_close=18.7)  # spec §I/O-Matrix (VIX 18,7)
+def _decode_first_response_json(cassette_path: Path) -> Any:
+    """Liest VCR-YAML, holt den Body der ersten Interaktion, gunzipt und parst JSON."""
+    raw = yaml.safe_load(cassette_path.read_text())
+    interaction = raw["interactions"][0]
+    body_bytes = interaction["response"]["body"]["string"]
+    encoding = interaction["response"]["headers"].get("Content-Encoding", [])
+    if "gzip" in encoding:
+        body_bytes = gzip.decompress(body_bytes)
+    return json.loads(body_bytes)
 
-NOW_PORTFOLIO_EMPTY = PortfolioSnapshot(sector_exposures={})  # spec §I/O-Matrix (empty portfolio)
+
+def _load_now_core_from_cassette() -> OratsCore:
+    """Lädt den ORATS /hist/cores-Snapshot für NOW vom 2026-04-24."""
+    payload = _decode_first_response_json(HIST_CORES_CASSETTE)
+    items = payload["data"]
+    assert items, f"Leere data-Liste in {HIST_CORES_CASSETTE}"
+    return OratsCore.model_validate(items[0])
+
+
+def _load_now_78_strike_from_cassette() -> OratsStrike:
+    """Findet NOW-Strike 78 mit DTE 55-56 in den /hist/strikes-Daten und parst ihn.
+
+    Konvertiert ORATS' Call-Delta-Feld (`delta`) in das Put-Delta (= delta - 1.0),
+    bevor `OratsStrike` validiert wird — ORATS gibt im /hist/strikes-Endpunkt
+    nur das Call-Delta zurück.
+    """
+    payload = _decode_first_response_json(HIST_STRIKES_CASSETTE)
+    items = payload["data"]
+    candidates = [
+        x
+        for x in items
+        if x.get("strike") == 78
+        and x.get("dte") in (55, 56)
+        and x.get("putBidPrice") is not None
+        and x.get("putAskPrice") is not None
+        and x.get("delta") is not None
+    ]
+    assert candidates, (
+        "Kein NOW-78-Strike mit DTE 55/56 in der Cassette gefunden — "
+        "Re-Recording oder Datenstruktur geändert"
+    )
+    raw = dict(candidates[0])
+    raw["delta"] = float(raw["delta"]) - 1.0  # Call-Delta → Put-Delta
+    return OratsStrike.model_validate(raw)
+
+
+NOW_CORE: OratsCore = _load_now_core_from_cassette()
+NOW_STRIKE: OratsStrike = _load_now_78_strike_from_cassette()
+
+# VIX 18,7 entspricht der ursprünglichen Spec-I/O-Matrix-Vorgabe — Pflichtregel 1
+# muss nur via IVR-Schenkel passen können. VIX wird nicht von ORATS geliefert,
+# daher bleibt der MacroSnapshot eine separate Test-Konstante.
+NOW_MACRO = MacroSnapshot(vix_close=18.7)
+NOW_PORTFOLIO_EMPTY = PortfolioSnapshot(sector_exposures={})

@@ -314,7 +314,10 @@ The `[rules.hormuz_special]` configuration block (lower IVR threshold, looser sp
 
 **Vendor gotchas:**
 - **FMP options endpoints are dead** (deprecated 2025-08-31) — never call `/api/v3/options/...`; always use ORATS for US options data and IVolatility for EU options data
-- **ORATS unauthorized endpoints** under current plan: `/datav2/hist/hv`, `/datav2/history/dailyPrice`, `/datav2/volatility` — do not call them; if HV is needed, derive from FMP daily prices
+- **ORATS endpoints — empirically verified status (2026-04-29 plan-tier probe):**
+  - ✅ Reachable on current plan (HTTP 200): `/datav2/cores`, `/datav2/strikes`, `/datav2/hist/strikes`, `/datav2/hist/cores`, `/datav2/ivrank`, `/datav2/summaries` — used by `OratsClient` (slice 2). The spec doc previously flagged `/datav2/hist/dailyPrice` (and the `/datav2/hist/...` family generically) as unauthorized — that note was stale; `/hist/strikes` and `/hist/cores` are reachable. Other `/hist/*` endpoints not yet probed — verify before assuming reachable.
+  - ❌ Still unauthorized on current plan (untested 2026-04-29): `/datav2/hist/hv`, `/datav2/history/dailyPrice`, `/datav2/volatility` — do not call them; if HV is needed, derive from FMP daily prices.
+  - **Rule of thumb:** before adding a new endpoint, run a one-off probe (`curl -sI 'https://api.orats.io/datav2/<path>?token=...&ticker=NOW'`) and update this list with the date.
 - **ORATS field semantics:**
   - `mktCap` is in thousands USD (96.524 = 96.5 B USD market cap, NOT 96.5 M)
   - `ivPctile1y` is the **IVR** (1-year IV percentile), not 1-month

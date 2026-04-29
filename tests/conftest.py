@@ -1,8 +1,9 @@
-"""Geteilte Pytest-Fixtures für den Pflichtregeln-Slice."""
+"""Geteilte Pytest-Fixtures für alle Slices."""
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -17,6 +18,22 @@ from tests.fixtures.now_2026_04_24 import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SETTINGS_PATH = PROJECT_ROOT / "config" / "settings.toml"
+CASSETTE_DIR = PROJECT_ROOT / "tests" / "cassettes" / "orats"
+
+
+@pytest.fixture(scope="session")
+def vcr_config() -> dict[str, Any]:
+    """VCR-Konfiguration: Token-Scrubbing + Replay-only by default.
+
+    Cassettes liegen unter `tests/cassettes/orats/`. Für die einmalige Aufnahme
+    wird auf der CLI `--record-mode=once` übergeben (überschreibt `record_mode`
+    pro Lauf). Standardlauf bleibt strikt offline.
+    """
+    return {
+        "filter_query_parameters": ["token", "apikey"],
+        "cassette_library_dir": str(CASSETTE_DIR),
+        "record_mode": "none",
+    }
 
 
 @pytest.fixture(scope="session")

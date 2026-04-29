@@ -1,0 +1,108 @@
+interactions:
+- request:
+    body: ''
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Host:
+      - api.orats.io
+      User-Agent:
+      - python-httpx/0.28.1
+    method: GET
+    uri: https://api.orats.io/datav2/cores?ticker=NOW
+  response:
+    body:
+      string: !!binary |
+        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
+    headers:
+      Access-Control-Allow-Credentials:
+      - 'true'
+      Access-Control-Allow-Origin:
+      - '*'
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Length:
+      - '2376'
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 29 Apr 2026 07:29:04 GMT
+      Via:
+      - 1.1 c504742f837311f9a05c4bb26acf30f8.cloudfront.net (CloudFront)
+      X-Amz-Cf-Id:
+      - tZ4vCLThjEp9YRUd7y3TPWYM34Wz__5dgy5BMAkV7x9ExVcaPdn_2A==
+      X-Amz-Cf-Pop:
+      - HAM50-P5
+      X-Amzn-Trace-Id:
+      - Root=1-69f1b340-6be58ed07d84b1946cfae422;Parent=1ffbd3c5bf9861b1;Sampled=0;Lineage=2:f10dd933:0
+      X-Cache:
+      - Miss from cloudfront
+      X-Monthly-Quota-Allowed:
+      - '20000'
+      X-Monthly-Quota-Remaining:
+      - '19739'
+      X-Monthly-Quota-Used:
+      - '261'
+      X-RateLimit-Duration:
+      - '60'
+      X-RateLimit-Limit:
+      - '1000'
+      X-RateLimit-Remaining:
+      - '999'
+      X-RateLimit-Reset:
+      - '2026-04-29T07:30:04.000Z'
+      x-amz-apigw-id:
+      - ckjyGEWIoAMEnxA=
+      x-amzn-RequestId:
+      - 739257f1-4cbb-4b14-a3a1-689c4329ae8d
+    status:
+      code: 200
+      message: OK
+version: 1

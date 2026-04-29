@@ -139,7 +139,7 @@ def rule_06_liquidity(
         return True, None
     parts: list[str] = []
     if not volume_ok:
-        parts.append(f"Volumen {core.avg_opt_volu_20d} < {settings.rules.options_volume_min}")
+        parts.append(f"Volumen {int(core.avg_opt_volu_20d)} < {settings.rules.options_volume_min}")
     if not spread_ok:
         parts.append(f"Spread {_de_num(spread)} USD > {_de_num(settings.rules.spread_max_usd)} USD")
     reason = "Pflichtregel 6 — Liquidität ungenügend: " + "; ".join(parts)

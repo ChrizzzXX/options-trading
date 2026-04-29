@@ -1,6 +1,18 @@
-"""Pflichtregeln-Tests: pro Regel eine Klasse + Orchestrator + Override + Regression."""
+"""Pflichtregeln-Tests: pro Regel eine Klasse + Orchestrator + Override + Regression.
+
+Die `_core()`/`_strike()`-Hilfen starten von einem **synthetischen** Baseline
+(`HAPPY_CORE` / `HAPPY_STRIKE`), nicht vom NOW-Cassette-Fixture, weil die echten
+NOW-Daten vom 2026-04-24 drei Pflichtregeln verletzen (siehe Reconciliation
+in `tests/fixtures/now_2026_04_24.py`-Modul-Docstring). Tests, die einen "guten"
+Kandidaten brauchen, bekommen ihn explizit.
+
+Die echten NOW-Werte werden ausschließlich von `TestNowRegression` benutzt — dort
+wird die wahre Verdikt asserted (3 Pflichtregeln scheitern).
+"""
 
 from __future__ import annotations
+
+from typing import ClassVar
 
 import pytest
 
@@ -19,17 +31,40 @@ from csp.filters.pflichtregeln import (
     rule_09_universe,
 )
 from csp.models.core import MacroSnapshot, OratsCore, OratsStrike, PortfolioSnapshot
-from tests.fixtures.now_2026_04_24 import NOW_CORE, NOW_MACRO, NOW_STRIKE
+from tests.fixtures.now_2026_04_24 import NOW_MACRO
+
+# Synthetischer "alle 9 Regeln passen"-Baseline. Nicht aus den echten Cassette-Daten
+# abgeleitet — der reale NOW-78-Strike vom 2026-04-24 verletzt drei Regeln.
+HAPPY_CORE = OratsCore.model_validate(
+    {
+        "ticker": "NOW",
+        "pxAtmIv": 85.0,
+        "sectorName": "Technology",
+        "mktCap": 170_000_000,
+        "ivPctile1y": 94,
+        "daysToNextErn": 30,
+        "avgOptVolu20d": 120_000.0,
+    }
+)
+HAPPY_STRIKE = OratsStrike.model_validate(
+    {
+        "strike": 78.0,
+        "delta": -0.22,
+        "dte": 45,
+        "putAskPrice": 4.32,
+        "putBidPrice": 4.28,
+    }
+)
 
 
 def _core(**overrides: object) -> OratsCore:
-    base = NOW_CORE.model_dump()
+    base = HAPPY_CORE.model_dump()
     base.update(overrides)
     return OratsCore(**base)
 
 
 def _strike(**overrides: object) -> OratsStrike:
-    base = NOW_STRIKE.model_dump()
+    base = HAPPY_STRIKE.model_dump()
     base.update(overrides)
     return OratsStrike(**base)
 
@@ -43,7 +78,7 @@ class TestRule01VolatilityRegime:
         # Niedriger IVR — VIX-Leg muss tragen.
         core = _core(ivr=10.0)
         passed, reason = rule_01_volatility_regime(
-            core, NOW_STRIKE, _macro(25.0), PortfolioSnapshot(), default_settings
+            core, HAPPY_STRIKE, _macro(25.0), PortfolioSnapshot(), default_settings
         )
         assert passed
         assert reason is None
@@ -51,7 +86,7 @@ class TestRule01VolatilityRegime:
     def test_passes_via_ivr_leg(self, default_settings: Settings) -> None:
         # Niedriger VIX — IVR-Leg muss tragen.
         passed, reason = rule_01_volatility_regime(
-            NOW_CORE, NOW_STRIKE, _macro(18.0), PortfolioSnapshot(), default_settings
+            HAPPY_CORE, HAPPY_STRIKE, _macro(18.0), PortfolioSnapshot(), default_settings
         )
         assert passed
         assert reason is None
@@ -59,7 +94,7 @@ class TestRule01VolatilityRegime:
     def test_fails_when_both_legs_low(self, default_settings: Settings) -> None:
         core = _core(ivr=35.0)
         passed, reason = rule_01_volatility_regime(
-            core, NOW_STRIKE, _macro(18.0), PortfolioSnapshot(), default_settings
+            core, HAPPY_STRIKE, _macro(18.0), PortfolioSnapshot(), default_settings
         )
         assert not passed
         assert reason is not None
@@ -82,7 +117,7 @@ class TestRule01VolatilityRegime:
     ) -> None:
         core = _core(ivr=ivr)
         passed, _ = rule_01_volatility_regime(
-            core, NOW_STRIKE, _macro(vix), PortfolioSnapshot(), default_settings
+            core, HAPPY_STRIKE, _macro(vix), PortfolioSnapshot(), default_settings
         )
         assert passed is expected
 
@@ -90,7 +125,7 @@ class TestRule01VolatilityRegime:
 class TestRule02DeltaBand:
     def test_passes_inside_band(self, default_settings: Settings) -> None:
         passed, reason = rule_02_delta_band(
-            NOW_CORE, NOW_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
+            HAPPY_CORE, HAPPY_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
         )
         assert passed
         assert reason is None
@@ -98,7 +133,7 @@ class TestRule02DeltaBand:
     def test_fails_below_band(self, default_settings: Settings) -> None:
         strike = _strike(delta=-0.30)
         passed, reason = rule_02_delta_band(
-            NOW_CORE, strike, NOW_MACRO, PortfolioSnapshot(), default_settings
+            HAPPY_CORE, strike, NOW_MACRO, PortfolioSnapshot(), default_settings
         )
         assert not passed
         assert reason is not None
@@ -108,7 +143,7 @@ class TestRule02DeltaBand:
     def test_fails_above_band(self, default_settings: Settings) -> None:
         strike = _strike(delta=-0.10)
         passed, reason = rule_02_delta_band(
-            NOW_CORE, strike, NOW_MACRO, PortfolioSnapshot(), default_settings
+            HAPPY_CORE, strike, NOW_MACRO, PortfolioSnapshot(), default_settings
         )
         assert not passed
         assert reason is not None
@@ -118,13 +153,13 @@ class TestRule02DeltaBand:
 class TestRule03DteWindow:
     def test_passes_at_upper_boundary(self, default_settings: Settings) -> None:
         passed, _ = rule_03_dte_window(
-            NOW_CORE, _strike(dte=55), NOW_MACRO, PortfolioSnapshot(), default_settings
+            HAPPY_CORE, _strike(dte=55), NOW_MACRO, PortfolioSnapshot(), default_settings
         )
         assert passed
 
     def test_fails_below_min(self, default_settings: Settings) -> None:
         passed, reason = rule_03_dte_window(
-            NOW_CORE, _strike(dte=20), NOW_MACRO, PortfolioSnapshot(), default_settings
+            HAPPY_CORE, _strike(dte=20), NOW_MACRO, PortfolioSnapshot(), default_settings
         )
         assert not passed
         assert reason is not None
@@ -132,7 +167,7 @@ class TestRule03DteWindow:
 
     def test_fails_above_max(self, default_settings: Settings) -> None:
         passed, reason = rule_03_dte_window(
-            NOW_CORE, _strike(dte=70), NOW_MACRO, PortfolioSnapshot(), default_settings
+            HAPPY_CORE, _strike(dte=70), NOW_MACRO, PortfolioSnapshot(), default_settings
         )
         assert not passed
         assert reason is not None
@@ -142,14 +177,14 @@ class TestRule03DteWindow:
 class TestRule04OtmDistance:
     def test_passes_at_threshold(self, default_settings: Settings) -> None:
         passed, _ = rule_04_otm_distance(
-            NOW_CORE, NOW_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
+            HAPPY_CORE, HAPPY_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
         )
         assert passed
 
     def test_fails_below_threshold(self, default_settings: Settings) -> None:
         # Strike 80 mit Spot 85 → OTM nur ≈ 5,88 %.
         passed, reason = rule_04_otm_distance(
-            NOW_CORE, _strike(strike=80.0), NOW_MACRO, PortfolioSnapshot(), default_settings
+            HAPPY_CORE, _strike(strike=80.0), NOW_MACRO, PortfolioSnapshot(), default_settings
         )
         assert not passed
         assert reason is not None
@@ -169,7 +204,7 @@ class TestRule04OtmDistance:
 class TestRule05EarningsDistance:
     def test_passes_far_from_earnings(self, default_settings: Settings) -> None:
         passed, _ = rule_05_earnings_distance(
-            NOW_CORE, NOW_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
+            HAPPY_CORE, HAPPY_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
         )
         assert passed
 
@@ -177,7 +212,7 @@ class TestRule05EarningsDistance:
         # ORATS gotcha: 0 Tage = "heute Earnings".
         core = _core(days_to_next_earn=0)
         passed, reason = rule_05_earnings_distance(
-            core, NOW_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
+            core, HAPPY_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
         )
         assert not passed
         assert reason is not None
@@ -186,7 +221,7 @@ class TestRule05EarningsDistance:
     def test_fails_just_below_threshold(self, default_settings: Settings) -> None:
         core = _core(days_to_next_earn=7)
         passed, reason = rule_05_earnings_distance(
-            core, NOW_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
+            core, HAPPY_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
         )
         assert not passed
         assert reason is not None
@@ -196,14 +231,14 @@ class TestRule05EarningsDistance:
 class TestRule06Liquidity:
     def test_passes_with_good_volume_and_tight_spread(self, default_settings: Settings) -> None:
         passed, _ = rule_06_liquidity(
-            NOW_CORE, NOW_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
+            HAPPY_CORE, HAPPY_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
         )
         assert passed
 
     def test_fails_on_low_volume_only(self, default_settings: Settings) -> None:
         core = _core(avg_opt_volu_20d=10_000)
         passed, reason = rule_06_liquidity(
-            core, NOW_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
+            core, HAPPY_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
         )
         assert not passed
         assert reason is not None
@@ -213,7 +248,7 @@ class TestRule06Liquidity:
     def test_fails_on_wide_spread_only(self, default_settings: Settings) -> None:
         strike = _strike(put_bid=4.20, put_ask=4.40)  # Spread 0,20
         passed, reason = rule_06_liquidity(
-            NOW_CORE, strike, NOW_MACRO, PortfolioSnapshot(), default_settings
+            HAPPY_CORE, strike, NOW_MACRO, PortfolioSnapshot(), default_settings
         )
         assert not passed
         assert reason is not None
@@ -236,7 +271,7 @@ class TestRule07MarketCap:
         # Setting in Mrd: 50 → 50_000_000 in Tausend.
         core = _core(mkt_cap_thousands=50_000_000.0)
         passed, _ = rule_07_market_cap(
-            core, NOW_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
+            core, HAPPY_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
         )
         assert passed
 
@@ -244,7 +279,7 @@ class TestRule07MarketCap:
         # 49,9 Mrd in Tausend.
         core = _core(mkt_cap_thousands=49_900_000.0)
         passed, reason = rule_07_market_cap(
-            core, NOW_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
+            core, HAPPY_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
         )
         assert not passed
         assert reason is not None
@@ -259,7 +294,7 @@ class TestRule07MarketCap:
         """
         core = _core(mkt_cap_thousands=1_000_000.0)  # = 1 Mrd USD
         passed, reason = rule_07_market_cap(
-            core, NOW_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
+            core, HAPPY_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
         )
         assert not passed
         assert reason is not None
@@ -271,7 +306,7 @@ class TestRule07MarketCap:
         # 96.524 Tausend (naiv ORATS-Ausgabewert) wäre nur 96,5 Mio USD — muss scheitern.
         core = _core(mkt_cap_thousands=96_524.0)
         passed, _ = rule_07_market_cap(
-            core, NOW_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
+            core, HAPPY_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
         )
         assert not passed
 
@@ -279,19 +314,23 @@ class TestRule07MarketCap:
 class TestRule08SectorCap:
     def test_passes_when_sector_below_cap(self, default_settings: Settings) -> None:
         portfolio = PortfolioSnapshot(sector_exposures={"Technology": 0.30})
-        passed, _ = rule_08_sector_cap(NOW_CORE, NOW_STRIKE, NOW_MACRO, portfolio, default_settings)
+        passed, _ = rule_08_sector_cap(
+            HAPPY_CORE, HAPPY_STRIKE, NOW_MACRO, portfolio, default_settings
+        )
         assert passed
 
     def test_passes_when_sector_unknown(self, default_settings: Settings) -> None:
         # Sektor nicht im Portfolio → 0,0 % → passt.
         portfolio = PortfolioSnapshot(sector_exposures={"Energy": 0.40})
-        passed, _ = rule_08_sector_cap(NOW_CORE, NOW_STRIKE, NOW_MACRO, portfolio, default_settings)
+        passed, _ = rule_08_sector_cap(
+            HAPPY_CORE, HAPPY_STRIKE, NOW_MACRO, portfolio, default_settings
+        )
         assert passed
 
     def test_fails_when_sector_above_cap(self, default_settings: Settings) -> None:
         portfolio = PortfolioSnapshot(sector_exposures={"Technology": 0.60})
         passed, reason = rule_08_sector_cap(
-            NOW_CORE, NOW_STRIKE, NOW_MACRO, portfolio, default_settings
+            HAPPY_CORE, HAPPY_STRIKE, NOW_MACRO, portfolio, default_settings
         )
         assert not passed
         assert reason is not None
@@ -312,21 +351,23 @@ class TestRule08SectorCap:
         self, default_settings: Settings, share: float, expected: bool
     ) -> None:
         portfolio = PortfolioSnapshot(sector_exposures={"Technology": share})
-        passed, _ = rule_08_sector_cap(NOW_CORE, NOW_STRIKE, NOW_MACRO, portfolio, default_settings)
+        passed, _ = rule_08_sector_cap(
+            HAPPY_CORE, HAPPY_STRIKE, NOW_MACRO, portfolio, default_settings
+        )
         assert passed is expected
 
 
 class TestRule09Universe:
     def test_passes_when_in_universe(self, default_settings: Settings) -> None:
         passed, _ = rule_09_universe(
-            NOW_CORE, NOW_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
+            HAPPY_CORE, HAPPY_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
         )
         assert passed
 
     def test_fails_when_not_in_universe(self, default_settings: Settings) -> None:
         core = _core(ticker="XXX")
         passed, reason = rule_09_universe(
-            core, NOW_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
+            core, HAPPY_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
         )
         assert not passed
         assert reason is not None
@@ -335,16 +376,20 @@ class TestRule09Universe:
 
 
 class TestPassesCspFilters:
-    def test_now_happy_path_returns_true_empty_reasons(
+    def test_synthetic_happy_path_returns_true_empty_reasons(
         self,
         default_settings: Settings,
-        now_core: OratsCore,
-        now_strike: OratsStrike,
-        now_macro: MacroSnapshot,
-        now_empty_portfolio: PortfolioSnapshot,
     ) -> None:
+        """Synthetischer Baseline-Kandidat erfüllt alle 9 Regeln.
+
+        Nicht der echte NOW-78 — der bricht 3 Regeln (siehe TestNowRegression).
+        """
         passed, reasons = passes_csp_filters(
-            now_core, now_strike, now_macro, now_empty_portfolio, default_settings
+            HAPPY_CORE,
+            HAPPY_STRIKE,
+            MacroSnapshot(vix_close=18.7),
+            PortfolioSnapshot(),
+            default_settings,
         )
         assert passed
         assert reasons == []
@@ -376,7 +421,7 @@ class TestPassesCspFilters:
     def test_universe_miss(self, default_settings: Settings) -> None:
         core = _core(ticker="XXX")
         passed, reasons = passes_csp_filters(
-            core, NOW_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
+            core, HAPPY_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
         )
         assert not passed
         assert any("Pflichtregel 9 — Ticker XXX nicht im Universum" in r for r in reasons)
@@ -384,7 +429,7 @@ class TestPassesCspFilters:
     def test_sector_cap_failure_format(self, default_settings: Settings) -> None:
         portfolio = PortfolioSnapshot(sector_exposures={"Technology": 0.60})
         passed, reasons = passes_csp_filters(
-            NOW_CORE, NOW_STRIKE, NOW_MACRO, portfolio, default_settings
+            HAPPY_CORE, HAPPY_STRIKE, NOW_MACRO, portfolio, default_settings
         )
         assert not passed
         sector_reasons = [r for r in reasons if r.startswith("Pflichtregel 8")]
@@ -426,12 +471,12 @@ class TestPassesCspFilters:
     def test_override_with_zero_violations_is_silent(
         self,
         default_settings: Settings,
-        now_core: OratsCore,
-        now_strike: OratsStrike,
-        now_macro: MacroSnapshot,
-        now_empty_portfolio: PortfolioSnapshot,
     ) -> None:
-        """P11: override=True ohne Verstöße darf keinen WARN emittieren."""
+        """P11: override=True ohne Verstöße darf keinen WARN emittieren.
+
+        Verwendet den synthetischen HAPPY-Baseline statt des echten NOW-78
+        (der 3 Regeln verletzt — kein zero-violation-Fall).
+        """
         from loguru import logger
 
         captured: list[str] = []
@@ -442,10 +487,10 @@ class TestPassesCspFilters:
         handler_id = logger.add(sink, level="WARNING", format="{message}")
         try:
             passed, reasons = passes_csp_filters(
-                now_core,
-                now_strike,
-                now_macro,
-                now_empty_portfolio,
+                HAPPY_CORE,
+                HAPPY_STRIKE,
+                MacroSnapshot(vix_close=18.7),
+                PortfolioSnapshot(),
                 default_settings,
                 override=True,
             )
@@ -458,7 +503,21 @@ class TestPassesCspFilters:
 
 @pytest.mark.now_regression
 class TestNowRegression:
-    def test_now_78_passes_all_rules(
+    """Echter NOW-78 vom 2026-04-24, geladen aus den ORATS-Cassetten.
+
+    Reconciliation: Der ursprüngliche synthetische Fixture (Premium 4,30,
+    DTE 55, Earnings in 30 Tagen, Spread 0,04) war über-optimistisch. Real
+    bricht NOW-78 drei Pflichtregeln (3, 5, 6). Der Test asserted die
+    Wahrheit — jede Verbesserung der Daten ändert die Liste.
+    """
+
+    EXPECTED_FAILURE_REASONS: ClassVar[list[str]] = [
+        "Pflichtregel 3 — DTE 56 außerhalb [30, 55]",
+        "Pflichtregel 5 — Earnings in 0 Tagen (< 8)",
+        "Pflichtregel 6 — Liquidität ungenügend: Spread 0,15 USD > 0,05 USD",
+    ]
+
+    def test_now_78_real_gate_verdict(
         self,
         default_settings: Settings,
         now_core: OratsCore,
@@ -466,12 +525,35 @@ class TestNowRegression:
         now_macro: MacroSnapshot,
         now_empty_portfolio: PortfolioSnapshot,
     ) -> None:
-        """NOW-78 vom 2026-04-24: alle 9 Pflichtregeln grün, leeres Portfolio."""
+        """NOW-78 vom 2026-04-24: 3 Regeln scheitern, 6 passieren — exact match."""
         passed, reasons = passes_csp_filters(
             now_core, now_strike, now_macro, now_empty_portfolio, default_settings
         )
-        assert passed, f"NOW-78 sollte passen, scheiterte aber: {reasons}"
-        assert reasons == []
+        assert not passed
+        assert reasons == self.EXPECTED_FAILURE_REASONS, (
+            f"Erwartete genau 3 Pflichtregel-Brüche, sah:\n  reasons: {reasons}\n"
+            f"  expected: {self.EXPECTED_FAILURE_REASONS}"
+        )
+
+    def test_now_78_metadata_from_cassette(
+        self,
+        now_core: OratsCore,
+        now_strike: OratsStrike,
+    ) -> None:
+        """Pinnt die Cassette-Werte (Spot, IVR, Strike, DTE, Spread) für die Reconciliation."""
+        # /hist/cores 2026-04-24 — pxAtmIv = 89.84, ivPctile1y = 96
+        assert now_core.ticker == "NOW"
+        assert now_core.under_price == 89.84
+        assert now_core.ivr == 96.0
+        assert now_core.days_to_next_earn == 0
+        assert now_core.sector == "Technology"
+        # /hist/strikes 2026-04-24 — Strike 78, DTE 56, putBid 2.70, putAsk 2.85
+        assert now_strike.strike == 78.0
+        assert now_strike.dte == 56
+        assert now_strike.put_bid == 2.7
+        assert now_strike.put_ask == 2.85
+        # Put-Delta = call_delta - 1 = 0.779 - 1 ≈ -0.221
+        assert -0.23 < now_strike.delta < -0.21
 
 
 def test_public_reexport_resolves_to_orchestrator() -> None:

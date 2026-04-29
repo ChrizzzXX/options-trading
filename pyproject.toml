@@ -8,6 +8,7 @@ dependencies = [
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
     "loguru>=0.7",
+    "httpx>=0.28.1",
 ]
 
 [dependency-groups]
@@ -17,6 +18,8 @@ dev = [
     "hypothesis>=6.100",
     "ruff>=0.5",
     "mypy>=1.10",
+    "pytest-vcr>=1.0.2",
+    "respx>=0.23.1",
 ]
 
 [build-system]
@@ -57,6 +60,7 @@ addopts = [
 ]
 markers = [
     "now_regression: NOW-78 (2026-04-24) regression anchor",
+    "recording: live ORATS HTTP — only run with --record-mode=once",
 ]
 
 [tool.coverage.run]
