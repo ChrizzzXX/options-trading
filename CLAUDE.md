@@ -11,9 +11,9 @@ Python research library for German Cash-Secured-Put options trading. Solo projec
 
 When PRD, project-context, and a spec disagree: **PRD wins, then project-context, then spec.** Surface the conflict to Chris before proceeding.
 
-## State as of 2026-04-29 (after slice 10 — MVP feature-complete)
+## State as of 2026-04-29 (after slice 11 — correctness pass)
 
-Ten slices shipped on `origin/main` (`https://github.com/ChrizzzXX/options-trading.git`, **private repo**). All commits pushed; tree clean. **All 10 PRD public functions are implemented.**
+Eleven slices shipped on `origin/main` (`https://github.com/ChrizzzXX/options-trading.git`, **private repo**). All commits pushed; tree clean. **All 10 PRD public functions implemented; 2 silent correctness bugs from MVP discovered + fixed.**
 
 - **Slice 1-3** — Pflichtregeln gate, ORATS client (with NOW cassette), `csp.idea(...)`. Closed D1.
 - **Slice 4** — `csp.scan(...)` universe scan (`bfceb53`). FR14/FR17/NFR5/NFR20.
@@ -24,18 +24,19 @@ Ten slices shipped on `origin/main` (`https://github.com/ChrizzzXX/options-tradi
 - **Slice 8b** — FMP base-URL bugfix + real cassettes (`06dc456`). Slice 5 had `https://financialmodelingprep.com/api/stable/...` which is now legacy 403'd; correct is `https://financialmodelingprep.com/stable/...`. Real `^VIX = 18.01` (live) and `18.71` (2026-04-24) cassettes recorded, scrubbed, played back. Closes D29.
 - **Slice 9** — Hardening pass (`6fb0a26`). Finite validators (`math.isfinite`) on every numeric field of `MacroSnapshot`/`OratsCore`/`OratsStrike` reject NaN/±Inf at the vendor boundary. `_row_to_trade` typing tightened: four `# type: ignore` comments replaced by defensive `isinstance` checks; schema drift raises a clear `LifecycleError` instead of a cryptic pydantic message. Closes D5, D27, D36.
 - **Slice 10** — `csp.export_to_sheets()` (`4d7c0e1`). Last of the PRD's 10 public functions. Implemented against the `gws sheets` CLI via subprocess (no new Python deps — leverages existing OAuth). 3-tab spreadsheet "csp-flywheel-terminal" (`GOOGLE_SHEET_ID` in `.env`), German headers, append-only. Live smoke verified: SMOKE ticker + VIX 18.01 round-tripped through the real Sheet. Closes D31.
+- **Slice 11** — Correctness pass (`653cdb8`). Two silent bugs surfaced + fixed: (1) **Pflichtregel #8 (sector cap)** never fired — `csp.idea`/`csp.scan` always passed an empty `PortfolioSnapshot()`. New `csp.portfolio.build_portfolio_snapshot()` reconstructs from open trades + per-trade sector lookup, divided by new `Settings.portfolio.total_csp_capital_usd` (default 100k). New `Idea.sector` field. (2) **`daily_brief` never warned about open positions approaching earnings** — added `_fetch_earnings_days_for_opens()` issuing per-position ORATS `/cores` calls + WARN on `daysToNextErn ≤ 7`. Closes D15.
 
-Tests: **375 default + 5 opt-in `recording`**. Overall coverage 98.87 %. ruff + ruff-format + mypy --strict + pytest all clean.
+Tests: **386 default + 5 opt-in `recording`**. Overall coverage 98.76 %. ruff + ruff-format + mypy --strict + pytest all clean.
 
-PRD has 10 public library functions; **all 10 done**: `passes_csp_filters`, `idea`, `scan`, `macro_snapshot`, `log_trade`, `close_trade`, `list_open_positions`, `get_idea`, `list_ideas`, `daily_brief`, `export_to_sheets`. MVP feature-complete.
+PRD has 10 public library functions; **all 10 done**: `passes_csp_filters`, `idea`, `scan`, `macro_snapshot`, `log_trade`, `close_trade`, `list_open_positions`, `get_idea`, `list_ideas`, `daily_brief`, `export_to_sheets`. MVP feature-complete and post-MVP correctness review applied.
 
 **Reconciliation truth:** `pytest -k now_regression` (PRD FR29 / NFR18) asserts real NOW-78 on 2026-04-24 **fails 3 of 9 rules** (DTE 56, earnings same day, spread 0.15 USD). Chris confirmed: `override=True` is routine practice. Slice 3 pinned the override-pathway design: rules 1, 3-9 are bypass-able via `override=True`; **Rule 2 (delta band) is structurally unbypassable** because `_select_strike` pre-filters by the band — to take a Rule-2-violating idea, relax `delta_min`/`delta_max` in `settings.toml` for that run.
 
 ## Next slice (recommended)
 
-MVP is feature-complete. From here, three reasonable directions:
+MVP feature-complete + 2 silent correctness bugs caught + fixed. From here, three reasonable directions:
 
-**A) Daily-driver shakedown.** Use the library for one or two real CSP-decision sessions and surface what doesn't feel right. The 10 functions all *work* in unit tests, but the live conversation flow — `daily_brief()` → review → `log_trade(idea)` → next morning `close_trade(...)` → `export_to_sheets()` — has only been smoke-tested. Friction points discovered here drive the highest-value polish items.
+**A) Daily-driver shakedown.** Use the library for one or two real CSP-decision sessions and surface what doesn't feel right. The 10 functions work in unit tests + are now correct against the two known-bad paths from slice 11. The live conversation flow — `daily_brief()` → review → `log_trade(idea)` → next morning `close_trade(...)` → `export_to_sheets()` — has only been smoke-tested. Friction points discovered here drive the highest-value polish items.
 
 **B) Continue hardening.** Active deferred items still worth doing:
 - D21, D23 — `pytest-benchmark` smoke for NFR1/NFR4 (≤ 60 s scan, ≤ 5 s idea).
