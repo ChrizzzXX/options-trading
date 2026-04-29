@@ -2,7 +2,7 @@
 title: 'Pflichtregeln Gate (csp.passes_csp_filters) + Project Bootstrap'
 type: 'feature'
 created: '2026-04-29'
-status: 'in-review'
+status: 'done'
 baseline_commit: 'EMPTY_TREE'
 implementation_commit: '4c82a17'
 context:
@@ -125,3 +125,69 @@ context:
 - `uv run pytest -q` — expected: all green, coverage gates hold
 - `uv run pytest -k now_regression -v` — expected: NOW-78 passes
 - `uv run python -c "import csp; print(csp.passes_csp_filters)"` — expected: prints function repr (public re-export verified)
+
+## Suggested Review Order
+
+**The deterministic gate (start here)**
+
+- Public surface — `import csp` re-exports the orchestrator + 4 models + exceptions per PRD FR11.
+  [`__init__.py:8`](../../src/csp/__init__.py#L8)
+
+- Orchestrator: runs all 9 rules, collects every reason in rule order, never short-circuits.
+  [`pflichtregeln.py:224`](../../src/csp/filters/pflichtregeln.py#L224)
+
+- Override-silence guard — `override=True` only logs WARN when at least one rule actually failed.
+  [`pflichtregeln.py:248`](../../src/csp/filters/pflichtregeln.py#L248)
+
+- Rule 8 sector-cap with FP-safe boundary — compares raw share, not `share*100 vs cap_pct`.
+  [`pflichtregeln.py:181`](../../src/csp/filters/pflichtregeln.py#L181)
+
+- Rule 7 mkt-cap unit reconciliation — `min_thousands = setting * 1_000_000` (billions ↔ thousands).
+  [`pflichtregeln.py:149`](../../src/csp/filters/pflichtregeln.py#L149)
+
+**Input contracts (Pydantic data carriers)**
+
+- `OratsStrike` rejects crossed/negative quotes at parse time — rule 6 doesn't have to defend against bad data.
+  [`core.py:46`](../../src/csp/models/core.py#L46)
+
+- Field constraints on `OratsCore` (under_price > 0, days_to_next_earn ≥ 0) and `OratsStrike.delta ∈ [-1, 0]`.
+  [`core.py:1`](../../src/csp/models/core.py#L1)
+
+**Settings & thresholds (FR12 compliance)**
+
+- `RuleThresholds` model_validator — enforces `delta_min < delta_max ≤ 0`, dte/strike/cap orderings, sign checks.
+  [`config.py:35`](../../src/csp/config.py#L35)
+
+- `UniverseConfig` — `allowed_tickers` is non-empty and case-insensitive (uppercase on load + on `OratsCore.ticker`).
+  [`config.py:74`](../../src/csp/config.py#L74)
+
+- Single source of truth for the 12 thresholds + universe seed.
+  [`settings.toml`](../../config/settings.toml)
+
+**Determinism contract (tests)**
+
+- NOW-78 regression — the canonical pass case (synthetic until ORATS-client slice records the real cassette).
+  [`test_pflichtregeln.py:459`](../../tests/test_pflichtregeln.py#L459)
+
+- Rule 8 FP-boundary parametrised at 0.5499 / 0.5500 / 0.5501 — locks down the floating-point fix.
+  [`test_pflichtregeln.py:311`](../../tests/test_pflichtregeln.py#L311)
+
+- Rule 1 OR-gate boundary — VIX-leg and IVR-leg threshold-grazing cases both tested.
+  [`test_pflichtregeln.py:70`](../../tests/test_pflichtregeln.py#L70)
+
+- Override silence — zero-violation overrides emit no WARN.
+  [`test_pflichtregeln.py:426`](../../tests/test_pflichtregeln.py#L426)
+
+- NOW-78 fixture with field-by-field source tags — reconciliation point when the real cassette arrives.
+  [`now_2026_04_24.py:17`](../../tests/fixtures/now_2026_04_24.py#L17)
+
+- Pydantic validator coverage — every Field constraint + every model_validator has a rejection test.
+  [`test_models.py:1`](../../tests/test_models.py#L1)
+
+**Bootstrap & ergonomics (peripherals)**
+
+- uv project skeleton + ruff/mypy/pytest tool configs + per-file 100% coverage gate command.
+  [`pyproject.toml`](../../pyproject.toml)
+
+- Repo-wide hard rules (read first by future Claude/Codex sessions).
+  [`CLAUDE.md`](../../CLAUDE.md)
