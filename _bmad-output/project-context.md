@@ -19,6 +19,16 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 ---
 
+## 🛠 2026-04-29 Scope Amendment — EU coverage removed
+
+**EU equity options via IVolatility is OUT OF SCOPE.** Probe established that the user's IVolatility plan tier does not include the options-chain endpoint (`/equities/eod/options-rawiv` → 403 "required tariff"). All references below to IVolatility, EU dispatch, EU candidates, `region="EU"`, `ALV.DE`, and the `vendor_symbol` universe column are **historical / superseded**. No new code should target EU coverage.
+
+**What stays:** `region: Literal["US", "EU"]` field on `Idea` (forward-compat; today always `"US"`); `data_freshness: Literal["live", "eod", "stale", "unavailable"]` (general use, no region branch).
+
+See `_bmad-output/planning-artifacts/prd.md` § "2026-04-29 Scope Amendment" for the binding wording.
+
+---
+
 ## Technology Stack & Versions
 
 **Runtime:** Python 3.12+

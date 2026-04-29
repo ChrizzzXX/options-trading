@@ -118,6 +118,19 @@ Single-user tool, no revenue, no growth metric. Honest stand-in is **portfolio-l
 
 ## Product Scope
 
+### 🛠 2026-04-29 Scope Amendment — EU coverage removed
+
+**Removed from MVP and Growth scope (binding):** EU equity options coverage via IVolatility. Reason: probe of `IVOLATILITY_API_KEY` against the documented `/equities/eod/options-rawiv` endpoint returned **HTTP 403 "required tariff, access denied"** on Chris's plan tier (verified 2026-04-29 against ALV.DE, ALV, ALV.GR, NOW). The single accessible endpoints (`/equities/eod/single-stock-option`, `…-raw-iv`) require a pre-known option ID and are useless for discovery. Plan upgrade or vendor switch is a future Growth-phase decision, not an open MVP debt.
+
+**What this removes from this PRD:**
+- IVolatility integration (FR3 mention, FR7 EU branch, FR13 region-dispatch, FR14 "US + EU together", FR15 "EU candidates", FR18 mixed top-3, FR20 EU-D-1 framing, FR23 EU live P/L) — all read US-only.
+- EU ticker support in the universe loader (`region`/`vendor_symbol` columns).
+- `IVolatilityClient`, `IVolatilityDataError`, `iv_health_check`.
+
+**What stays:** the `data_freshness` enum (`"live"`, `"eod"`, `"stale"`, `"unavailable"`) — useful generally; just no `region="EU"` paths today. `region: Literal["US", "EU"]` on `Idea` is kept for forward-compat — every Idea has `region="US"` until/unless EU is reactivated.
+
+This amendment supersedes the 2026-04-27 IVolatility addition described in §"Project Scoping & Phased Development". `D22` and `D30` in `deferred-work.md` are now **rejected** (out of scope), not deferred.
+
 ### MVP — Minimum Viable Product (Weeks 1–2)
 
 **In scope:**
