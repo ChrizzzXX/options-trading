@@ -6,7 +6,7 @@ Aliase (Field(alias=...)) folgen mit dem ORATS-Client-Slice.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class OratsCore(BaseModel):
@@ -15,18 +15,25 @@ class OratsCore(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     ticker: str
-    under_price: float
+    under_price: float = Field(gt=0, description="Spotpreis des Underlyings; muss > 0 sein.")
     sector: str
     mkt_cap_thousands: float = Field(
         description="Marktkapitalisierung in Tausend USD (ORATS-Konvention)."
     )
     ivr: float = Field(description="1-Jahres-IV-Perzentil (entspricht ORATS ivPctile1y).")
     days_to_next_earn: int = Field(
+        ge=0,
         description="Tage bis zum nächsten Earnings; 0 = heute Earnings (Pflichtregel 5 Fail).",
     )
     avg_opt_volu_20d: int = Field(
         description="Durchschnittliches Optionsvolumen der letzten 20 Tage."
     )
+
+    @field_validator("ticker")
+    @classmethod
+    def _normalise_ticker(cls, value: str) -> str:
+        """Ticker werden uppercase normalisiert, damit Pflichtregel 9 case-insensitiv prüft."""
+        return value.upper()
 
 
 class OratsStrike(BaseModel):
@@ -35,10 +42,23 @@ class OratsStrike(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     strike: float
-    delta: float = Field(description="Put-Delta; muss in [-1, 0] liegen.")
+    delta: float = Field(ge=-1.0, le=0.0, description="Put-Delta; muss in [-1, 0] liegen.")
     dte: int
     put_ask: float
     put_bid: float
+
+    @model_validator(mode="after")
+    def _validate_quotes(self) -> OratsStrike:
+        """Lehnt überkreuzte oder negative Quotes ab: put_ask >= put_bid >= 0."""
+        if self.put_bid < 0:
+            raise ValueError(
+                f"put_bid {self.put_bid} ist negativ; gültige Quotes erfordern put_bid >= 0"
+            )
+        if self.put_ask < self.put_bid:
+            raise ValueError(
+                f"put_ask {self.put_ask} < put_bid {self.put_bid} (überkreuzte Quotes)"
+            )
+        return self
 
 
 class MacroSnapshot(BaseModel):

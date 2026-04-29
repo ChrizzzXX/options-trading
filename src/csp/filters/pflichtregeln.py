@@ -93,12 +93,11 @@ def rule_04_otm_distance(
     portfolio: PortfolioSnapshot,
     settings: Settings,
 ) -> RuleResult:
-    """Pflichtregel 4: Strike mindestens strike_otm_min_pct unterhalb des Spotpreises."""
-    if core.under_price <= 0:
-        reason = (
-            f"Pflichtregel 4 — Spotpreis {_de_num(core.under_price)} ungültig für OTM-Berechnung"
-        )
-        return False, reason
+    """Pflichtregel 4: Strike mindestens strike_otm_min_pct unterhalb des Spotpreises.
+
+    Das Modell `OratsCore` erzwingt `under_price > 0` per Field-Validator (P2),
+    daher entfällt hier die defensive Null-/Negativ-Prüfung.
+    """
     otm_pct = (core.under_price - strike.strike) / core.under_price * 100.0
     threshold = settings.rules.strike_otm_min_pct
     if otm_pct >= threshold:
@@ -177,15 +176,20 @@ def rule_08_sector_cap(
     portfolio: PortfolioSnapshot,
     settings: Settings,
 ) -> RuleResult:
-    """Pflichtregel 8: Aktuelle Sektorgewichtung ≤ sector_cap_pct."""
+    """Pflichtregel 8: Aktuelle Sektorgewichtung ≤ sector_cap_pct.
+
+    Vergleicht den rohen Anteil (0..1) gegen `sector_cap_pct / 100`, um
+    Float-Rundungsartefakte an der exakten Grenze zu vermeiden (P4).
+    """
     current_share = portfolio.sector_exposures.get(core.sector, 0.0)
-    current_pct = current_share * 100.0
-    threshold = settings.rules.sector_cap_pct
-    if current_pct <= threshold:
+    threshold_pct = settings.rules.sector_cap_pct
+    threshold_share = threshold_pct / 100.0
+    if current_share <= threshold_share:
         return True, None
+    current_pct = current_share * 100.0
     reason = (
         f"Pflichtregel 8 — Sektor {core.sector} bereits {_de_pct(current_pct)} "
-        f"> {_de_pct(threshold)}"
+        f"> {_de_pct(threshold_pct)}"
     )
     return False, reason
 
@@ -242,11 +246,12 @@ def passes_csp_filters(
             reasons.append(reason)
 
     if override:
-        logger.warning(
-            "Pflichtregeln-Override aktiv für Ticker {ticker}: {n} Verstöße ignoriert",
-            ticker=core.ticker,
-            n=len(reasons),
-        )
+        if reasons:
+            logger.warning(
+                "Pflichtregeln-Override aktiv für Ticker {ticker}: {n} Verstöße ignoriert",
+                ticker=core.ticker,
+                n=len(reasons),
+            )
         return True, reasons
 
     return len(reasons) == 0, reasons

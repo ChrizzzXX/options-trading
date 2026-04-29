@@ -2,8 +2,9 @@
 title: 'Pflichtregeln Gate (csp.passes_csp_filters) + Project Bootstrap'
 type: 'feature'
 created: '2026-04-29'
-status: 'in-progress'
-baseline_commit: 'NO_VCS'
+status: 'in-review'
+baseline_commit: 'EMPTY_TREE'
+implementation_commit: '4c82a17'
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/planning-artifacts/prd.md'
@@ -49,7 +50,7 @@ context:
 | Multi-rule fail (collect all) | Candidate failing rules 2, 3, 5 | `(False, [r2_msg, r3_msg, r5_msg])` in rule order | Never short-circuits |
 | Rule 1 OR-gate | VIX 18 + IVR 35 → fail; VIX 18 + IVR 45 → pass | German reason names both values on fail | |
 | Universe miss | `ticker="XXX"` not in `allowed_tickers` | `(False, ["Pflichtregel 9 — Ticker XXX nicht im Universum"])` | Rule 9 |
-| Sector cap | `portfolio.sector_exposures = {"Tech": 0.60}`, candidate sector "Tech" | `(False, ["Pflichtregel 8 — Sektor Tech bereits 60,0 % > 55 %"])` | Rule 8, dict input from caller |
+| Sector cap | `portfolio.sector_exposures = {"Tech": 0.60}`, candidate sector "Tech" | `(False, ["Pflichtregel 8 — Sektor Tech bereits 60,0 % > 55,0 %"])` | Rule 8, dict input from caller |
 | Override flag | Failing candidate + `override=True` | `(True, [original reasons preserved])`; loguru WARN emitted | No DB write yet |
 | Mkt-cap unit conversion | Setting `market_cap_min_billion = 50`; ORATS `mktCap` in **thousands** USD | Internally: `min_thousands = setting * 1_000_000`; tested at boundary in both directions | Rule 7 |
 
@@ -103,6 +104,8 @@ context:
 ## Spec Change Log
 
 - 2026-04-29 — Implementation complete. `addopts` in `pyproject.toml` carries the 80 % overall gate; the 100 % `pflichtregeln.py` gate is enforced via a separate `coverage report --include='src/csp/filters/pflichtregeln.py' --fail-under=100` invocation (pytest only honors the last `--cov-fail-under` flag, so two simultaneous gates aren't expressible in pyproject `addopts`). Both gates pass at HEAD: `pflichtregeln.py` 100 % / overall 100 %.
+- 2026-04-29 — Pre-review patch: initial commit (`6085731`) swept in 831 files / 131 717 LOC because `git add -A` ran without a `.gitignore` rule for tool-install folders (`.agents/`, `.claude/`, `_bmad/`). Code itself was correct (40 tests green, all gates passing). Fix: appended `_bmad/`, `.agents/`, `.claude/` to `.gitignore`; reset HEAD via `git update-ref -d HEAD` (initial commit, no parent); unstaged the three folders with `git rm -r --cached`; re-committed identical content scope to **35 files / 7 419 LOC** as `4c82a17`. KEEP: `_bmad-output/` (PRD, project-context.md, this spec) and `docs/` (Chris's pre-existing strategy/watchlist) remain tracked — they are user-authored source-of-truth, not tool installations. Future bootstraps must include the .gitignore tooling-folder rules before any `git add -A`.
+- 2026-04-29 — Review-driven hardening (14 patches). **Group A (P2/P3/P5/P10/P14):** front-load data sanity at the Pydantic boundary — `OratsCore.under_price > 0`, `OratsStrike.delta ∈ [-1, 0]`, `OratsCore.days_to_next_earn ≥ 0`, `OratsStrike` rejects crossed/negative quotes (`put_ask ≥ put_bid ≥ 0`); the now-unreachable spot-guard branch in rule 4 is removed. **Group B (P1/P6/P7/P8/P9):** Settings hygiene — `RuleThresholds` enforces ordering & sign of all twelve thresholds via `model_validator`, both `RuleThresholds` and `UniverseConfig` set `extra="forbid"` to catch typos, `Settings.load` narrows its `except` to `(TomlDecodeError, ValidationError, OSError)` so `KeyboardInterrupt` propagates, `allowed_tickers` requires `min_length=1` and is uppercase-normalised, `OratsCore.ticker` likewise — case-insensitive Pflichtregel 9 falls out for free. **Group C (P4/P11/P12):** rule 8 sector-cap compares the raw share against `sector_cap_pct / 100` to side-step the `0.55 * 100 → 55.000…01` FP artefact (parametrised tests at 0.5499/0.5500/0.5501); `passes_csp_filters` only logs the override-WARN when `override=True AND reasons` (silent on zero-violation overrides); a parametrised rule 1 boundary test pins both legs at threshold-grazing values. **Group D (P13):** Row 5 of the I/O & Edge-Case Matrix realigned to the project formatter convention (`> 55,0 %`).
 
 ## Design Notes
 

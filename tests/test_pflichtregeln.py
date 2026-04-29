@@ -67,6 +67,25 @@ class TestRule01VolatilityRegime:
         assert "VIX 18,00" in reason
         assert "IVR 35,00" in reason
 
+    @pytest.mark.parametrize(
+        ("vix", "ivr", "expected"),
+        [
+            # P12: Beide Schenkel an / unter Schwelle gepinnt; Default vix_min=20, ivr_min=40.
+            (18.0, 45.0, True),  # IVR-Leg trägt: 45 ≥ 40, VIX-Leg fällt: 18 < 20
+            (20.0, 10.0, True),  # VIX-Leg trägt exakt an Schwelle: 20 ≥ 20
+            (20.0, 40.0, True),  # Beide exakt an Schwelle → pass
+            (19.99, 39.99, False),  # Beide knapp unter → fail
+        ],
+    )
+    def test_threshold_grazing_boundaries(
+        self, default_settings: Settings, vix: float, ivr: float, expected: bool
+    ) -> None:
+        core = _core(ivr=ivr)
+        passed, _ = rule_01_volatility_regime(
+            core, NOW_STRIKE, _macro(vix), PortfolioSnapshot(), default_settings
+        )
+        assert passed is expected
+
 
 class TestRule02DeltaBand:
     def test_passes_inside_band(self, default_settings: Settings) -> None:
@@ -137,14 +156,14 @@ class TestRule04OtmDistance:
         assert "Pflichtregel 4" in reason
         assert "%" in reason
 
-    def test_fails_when_spot_invalid(self, default_settings: Settings) -> None:
-        core = _core(under_price=0.0)
-        passed, reason = rule_04_otm_distance(
-            core, NOW_STRIKE, NOW_MACRO, PortfolioSnapshot(), default_settings
-        )
-        assert not passed
-        assert reason is not None
-        assert "Spotpreis" in reason
+    def test_invalid_spot_rejected_at_model_boundary(self, default_settings: Settings) -> None:
+        """P14: under_price <= 0 wird von Pydantic verworfen, Rule 4 sieht solche Daten nie."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            _core(under_price=0.0)
+        with pytest.raises(ValidationError):
+            _core(under_price=-1.0)
 
 
 class TestRule05EarningsDistance:
@@ -280,6 +299,22 @@ class TestRule08SectorCap:
         assert "60,0 %" in reason
         assert "55,0 %" in reason
 
+    @pytest.mark.parametrize(
+        ("share", "expected"),
+        [
+            # P4: sector_cap_pct=55.0; share*100 produzierte fälschlich 55.000…01 > 55.0.
+            (0.5499, True),  # knapp darunter → pass
+            (0.5500, True),  # exakt an Grenze → pass (FP-sicherer Vergleich)
+            (0.5501, False),  # knapp darüber → fail
+        ],
+    )
+    def test_fp_boundary_at_exact_threshold(
+        self, default_settings: Settings, share: float, expected: bool
+    ) -> None:
+        portfolio = PortfolioSnapshot(sector_exposures={"Technology": share})
+        passed, _ = rule_08_sector_cap(NOW_CORE, NOW_STRIKE, NOW_MACRO, portfolio, default_settings)
+        assert passed is expected
+
 
 class TestRule09Universe:
     def test_passes_when_in_universe(self, default_settings: Settings) -> None:
@@ -387,6 +422,38 @@ class TestPassesCspFilters:
         assert len(reasons) >= 1
         assert any("Pflichtregel 2" in r for r in reasons)
         assert any("Override" in line for line in captured)
+
+    def test_override_with_zero_violations_is_silent(
+        self,
+        default_settings: Settings,
+        now_core: OratsCore,
+        now_strike: OratsStrike,
+        now_macro: MacroSnapshot,
+        now_empty_portfolio: PortfolioSnapshot,
+    ) -> None:
+        """P11: override=True ohne Verstöße darf keinen WARN emittieren."""
+        from loguru import logger
+
+        captured: list[str] = []
+
+        def sink(message: object) -> None:
+            captured.append(str(message))
+
+        handler_id = logger.add(sink, level="WARNING", format="{message}")
+        try:
+            passed, reasons = passes_csp_filters(
+                now_core,
+                now_strike,
+                now_macro,
+                now_empty_portfolio,
+                default_settings,
+                override=True,
+            )
+        finally:
+            logger.remove(handler_id)
+        assert passed
+        assert reasons == []
+        assert captured == []
 
 
 @pytest.mark.now_regression
