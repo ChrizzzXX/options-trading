@@ -7,6 +7,7 @@ from csp._logging import install_secret_redactor
 from csp.clients.fmp import FmpClient
 from csp.clients.orats import OratsClient
 from csp.config import Settings
+from csp.daily_brief import daily_brief
 from csp.exceptions import (
     ConfigError,
     FMPDataError,
@@ -31,6 +32,7 @@ from csp.lifecycle_api import (
 )
 from csp.macro import macro_snapshot
 from csp.models.core import MacroSnapshot, OratsCore, OratsStrike, PortfolioSnapshot
+from csp.models.daily_brief import DailyBrief
 from csp.models.idea import Idea
 from csp.models.trade import Trade
 from csp.scan import scan
@@ -40,6 +42,7 @@ install_secret_redactor()
 
 __all__ = [
     "ConfigError",
+    "DailyBrief",
     "FMPDataError",
     "FMPEmptyDataError",
     "FmpClient",
@@ -58,6 +61,7 @@ __all__ = [
     "Trade",
     "TradeStatus",
     "close_trade",
+    "daily_brief",
     "fmp_health_check",
     "get_idea",
     "idea",
