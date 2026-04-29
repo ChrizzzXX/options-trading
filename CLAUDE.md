@@ -12,9 +12,9 @@ Python research library for German Cash-Secured-Put options trading. Solo projec
 
 When PRD, project-context, and a spec disagree: **PRD wins, then project-context, then spec.** Surface the conflict to Chris before proceeding.
 
-## State as of 2026-04-29 (after slice 11 — correctness pass)
+## State as of 2026-04-29 (after slice 12 — earnings sentinel + shakedown Track A)
 
-Eleven slices shipped on `origin/main` (`https://github.com/ChrizzzXX/options-trading.git`, **private repo**). All commits pushed; tree clean. **All 10 PRD public functions implemented; 2 silent correctness bugs from MVP discovered + fixed.**
+Twelve slices shipped on `origin/main` (`https://github.com/ChrizzzXX/options-trading.git`, **private repo**). All commits pushed; tree clean. **All 10 PRD public functions implemented; 3 silent correctness bugs from MVP discovered + fixed (2 in slice 11, 1 in slice 12). Track-A shakedown executed top-to-bottom with friction log persisted.**
 
 - **Slice 1-3** — Pflichtregeln gate, ORATS client (with NOW cassette), `csp.idea(...)`. Closed D1.
 - **Slice 4** — `csp.scan(...)` universe scan (`bfceb53`). FR14/FR17/NFR5/NFR20.
@@ -26,31 +26,48 @@ Eleven slices shipped on `origin/main` (`https://github.com/ChrizzzXX/options-tr
 - **Slice 9** — Hardening pass (`6fb0a26`). Finite validators (`math.isfinite`) on every numeric field of `MacroSnapshot`/`OratsCore`/`OratsStrike` reject NaN/±Inf at the vendor boundary. `_row_to_trade` typing tightened: four `# type: ignore` comments replaced by defensive `isinstance` checks; schema drift raises a clear `LifecycleError` instead of a cryptic pydantic message. Closes D5, D27, D36.
 - **Slice 10** — `csp.export_to_sheets()` (`4d7c0e1`). Last of the PRD's 10 public functions. Implemented against the `gws sheets` CLI via subprocess (no new Python deps — leverages existing OAuth). 3-tab spreadsheet "csp-flywheel-terminal" (`GOOGLE_SHEET_ID` in `.env`), German headers, append-only. Live smoke verified: SMOKE ticker + VIX 18.01 round-tripped through the real Sheet. Closes D31.
 - **Slice 11** — Correctness pass (`653cdb8`). Two silent bugs surfaced + fixed: (1) **Pflichtregel #8 (sector cap)** never fired — `csp.idea`/`csp.scan` always passed an empty `PortfolioSnapshot()`. New `csp.portfolio.build_portfolio_snapshot()` reconstructs from open trades + per-trade sector lookup, divided by new `Settings.portfolio.total_csp_capital_usd` (default 100k). New `Idea.sector` field. (2) **`daily_brief` never warned about open positions approaching earnings** — added `_fetch_earnings_days_for_opens()` issuing per-position ORATS `/cores` calls + WARN on `daysToNextErn ≤ 7`. Closes D15.
+- **Slice 12** — ORATS earnings sentinel (`f8d2276`). Shipped during Track A shakedown when Session 1.A surfaced **8/12 universe tickers returning `daysToNextErn = 0`** simultaneously — clearly impossible. Root cause: ORATS uses `nextErn = '0000-00-00'` as a sentinel meaning *"date not yet rolled forward"*, with `daysToNextErn = 0` as the zero-fallback. Library was treating the sentinel identically to *"earnings today"* and rejecting on Pflichtregel 5, breaking the daily flow on every day ORATS lagged the earnings calendar. Three-layer fix: (1) `OratsCore.days_to_next_earn: int | None` with `model_validator(mode="before")` that detects the sentinel and either derives from `wksNextErn × 7` (when available) or sets None. (2) Pflichtregel 5 handles None with distinct German reason `"Earnings-Datum bei Vendor nicht verfügbar — manuell prüfen"` (overridable). (3) `daily_brief` slice-11 emergency-close warning skips silently on None. **NOW-78 regression test updated**: 3 → 2 expected failures (Rules 3 + 6) — the cassette had `wksNextErn = 12`, real distance ~84 days, Rule 5 now passes. The cassette was right; the interpretation was wrong.
 
-Tests: **386 default + 5 opt-in `recording`**. Overall coverage 98.76 %. ruff + ruff-format + mypy --strict + pytest all clean.
+Tests: **397 default + 5 opt-in `recording`** (slice 12 added 11 sentinel-coverage tests). Overall coverage 98.78 %. ruff + ruff-format + mypy --strict + pytest all clean.
 
 PRD has 10 public library functions; **all 10 done**: `passes_csp_filters`, `idea`, `scan`, `macro_snapshot`, `log_trade`, `close_trade`, `list_open_positions`, `get_idea`, `list_ideas`, `daily_brief`, `export_to_sheets`. MVP feature-complete and post-MVP correctness review applied.
 
-**Reconciliation truth:** `pytest -k now_regression` (PRD FR29 / NFR18) asserts real NOW-78 on 2026-04-24 **fails 3 of 9 rules** (DTE 56, earnings same day, spread 0.15 USD). Chris confirmed: `override=True` is routine practice. Slice 3 pinned the override-pathway design: rules 1, 3-9 are bypass-able via `override=True`; **Rule 2 (delta band) is structurally unbypassable** because `_select_strike` pre-filters by the band — to take a Rule-2-violating idea, relax `delta_min`/`delta_max` in `settings.toml` for that run.
+**Reconciliation truth:** `pytest -k now_regression` (PRD FR29 / NFR18) asserts real NOW-78 on 2026-04-24 **fails 2 of 9 rules** (DTE 56, spread 0.15 USD). Pre-slice-12 the test asserted 3 fails — the third was Pflichtregel 5 mis-fired by the sentinel bug. Chris confirmed: `override=True` is routine practice. Slice 3 pinned the override-pathway design: rules 1, 3-9 are bypass-able via `override=True`; **Rule 2 (delta band) is structurally unbypassable** because `_select_strike` pre-filters by the band — to take a Rule-2-violating idea, relax `delta_min`/`delta_max` in `settings.toml` for that run.
+
+## Track-A shakedown — friction log (2026-04-29)
+
+Full friction log at `_bmad-output/planning-artifacts/shakedown-friction-log-2026-04-29.md` (commit alongside this update). Outcome:
+
+- **Blockers (1, fixed in slice 12):** F1 ORATS earnings sentinel.
+- **Majors (3, slice-13 candidates):**
+  - **F2** — empty-brief diagnostics: when `ranked_ideas == []`, `daily_brief.to_markdown()` gives no signal as to which rule(s) gated the universe. Most important UX recovery move now.
+  - **F11** — `log_idea` + `log_trade` both create idea rows; trade FK points to the auto-created one. Result: `list_ideas(overrides_only=True)` returns 2 entries for a single decision. **Breaks FR9 monthly review.**
+  - **F7** — workflow still produces 0 candidates without overrides today; F2 is the actual unblocker.
+- **Minors (5):** F3 (`scan(include_failures=True)`), F8 (generic `Begründung`), F9 (`Idea.with_override()`), F12 (`Trade.strike` denormalisation vs N+1), F17 (empty-scan no Sheets row), F18 (closed trades not in Sheets).
+- **Cosmetic (5):** F4 (VIX `%`), F5 (`MacroSnapshot.as_of`), F6 (no portfolio section in markdown), F10 (quote drift), F19 (Macro tab same-date rows).
+- **Verified-passing:** F13 slice-11 bug 1, F14 slice-11 bug 2, F15 vendor-fail + token redaction, F16 lifecycle state machine + PnL math.
+
+**Probes:** P1/P5/P6 verified during sessions. P2 confirmed (live VIX 18.4 < vix_min=20, IVR-leg gates the universe). P3 confirms F11. P4 vacuously deterministic (0=0); the real NFR20 contract is `pytest -k now_regression`.
 
 ## Next slice (recommended)
 
-**Run the shakedown plan first.** `_bmad-output/planning-artifacts/shakedown-plan-2026-04-29.md` is the binding work for the next session. It defines Track A (1-2 hour simulation), Track B (1-2 week real-world routine), 6 targeted probes (Pflichtregel #8 stress, IVR-leg behavior, override audit trail, settings-tweak determinism, DuckDB invariants, vendor-failure resilience), and the friction-log format that becomes slice-12 input.
+**Slice 13 = F2 + F11.** Both are user-blocking majors:
 
-After the shakedown the recommendation depends on what the friction log shows:
+1. **F2 — empty-brief diagnostics.** Add `csp.scan(include_failures: bool = False)` returning all ideas (pass + fail). `daily_brief()` calls with `True`, attaches per-rule rejection histogram to `DailyBrief`. `to_markdown()` renders histogram when `ranked_ideas == []` and the universe was non-empty: *"12 Tickers geprüft — 5 × Pflichtregel 5, 4 × Pflichtregel 6, 3 × Pflichtregel 4."*
+2. **F11 — content-addressed idea persistence.** Make `log_idea` idempotent (same Idea content → same idea_id, no duplicate row). `log_trade` then goes through `log_idea` to upsert. Result: 1 audit row per decision regardless of which entry-point the user used. Idempotency key = stable hash of `idea.model_dump_json` (sort_keys).
 
-- **Friction log has blockers** → fix-first slice 12.
-- **Friction log has majors only** → triage + slice 12 prioritized accordingly.
-- **Friction log is clean** → declare MVP production-ready and move to Growth-phase scope (Wheel covered-call lifecycle D32, Iron Condor / Strangle plugins, scheduled cron, Hormuz special-rules).
+After slice 13, if no new blockers/majors: declare MVP **production-ready** and move to Growth-phase (Wheel covered-call lifecycle D32, Iron Condor / Strangle plugins, scheduled cron, Hormuz special-rules).
 
-Other deferred items still worth doing if the shakedown is clean:
+Cosmetic batch (F4 + F5 + F19) → polish slice once 5+ accumulate.
+
+Other deferred items:
 - D21, D23 — `pytest-benchmark` smoke for NFR1/NFR4 (≤ 60 s scan, ≤ 5 s idea).
 - D26 — `gather` poison-pill (defer until first leak).
 - D37 — SQL parser robustness (defer until first DML migration).
-- D38 — `daily_brief` N+1 (defer until > 20 open positions).
+- D38 — `daily_brief` N+1 (defer until > 20 open positions; F12 surfaces same risk).
 - D39 — markdown templates (defer until Sheets/PDF needed).
 
-To start the next session: open Claude Code in this repo, point it at `_bmad-output/planning-artifacts/shakedown-plan-2026-04-29.md`, and say "run me through Track A". **Active D-numbers:** D2, D4, D6–D11, D16–D17 (D17 partial), D18–D21, D23–D26, D28, D32–D35, D37–D39. **Closed/rejected:** D1, D3, D5, D12–D15, D22, D27, D29, D30, D31, D36, D40.
+**Active D-numbers:** D2, D4, D6–D11, D16–D17 (D17 partial), D18–D21, D23–D26, D28, D32–D35, D37–D39. **Closed/rejected:** D1, D3, D5, D12–D15, D22, D27, D29, D30, D31, D36, D40.
 
 ## Hard rules (don't violate without explicit human approval)
 
