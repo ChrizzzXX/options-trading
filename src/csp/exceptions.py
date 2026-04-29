@@ -41,3 +41,28 @@ class ORATSEmptyDataError(ORATSDataError):
     Eigene Subklasse, damit Caller "kein Datensatz" von echten Vendor-Fehlern
     unterscheiden können. Status bleibt `200` — HTTP war OK, semantisch nicht.
     """
+
+
+class FMPDataError(Exception):
+    """FMP-Vendor-Fehler (4xx final oder 5xx/429/Transport nach Retries).
+
+    Spiegelt `ORATSDataError` strukturell — gleiche Sentinel-Statuscodes,
+    gleiche Redaktion über `_redact_text` aus `clients/orats.py`.
+    """
+
+    def __init__(self, *, status: int, body: str, url_redacted: str) -> None:
+        from csp.clients.orats import _redact_text
+
+        self.status = status
+        self.body = _redact_text(body)
+        self.url_redacted = url_redacted
+        message = f"FMP-Fehler {status} bei {url_redacted}: {self.body[:200]}"
+        super().__init__(message)
+
+
+class FMPEmptyDataError(FMPDataError):
+    """FMP lieferte HTTP 200, aber Antwort ist leer / Pflichtfeld fehlt.
+
+    Status bleibt `200`. Caller (`csp.macro_snapshot`) fängt dies und fällt auf
+    `[macro] vix_close`-Settings zurück, statt scan/idea hart zu blockieren.
+    """

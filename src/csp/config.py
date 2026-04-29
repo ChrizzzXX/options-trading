@@ -26,6 +26,7 @@ from csp.exceptions import ConfigError
 
 DEFAULT_SETTINGS_PATH = Path("config/settings.toml")
 DEFAULT_ORATS_BASE_URL = "https://api.orats.io/datav2"
+DEFAULT_FMP_BASE_URL = "https://financialmodelingprep.com/api"
 
 
 class RuleThresholds(BaseModel):
@@ -139,6 +140,17 @@ class Settings(BaseSettings):
     orats_base_url: str = Field(
         default=DEFAULT_ORATS_BASE_URL,
         description="ORATS-Datav2-Basis-URL (override via ORATS_BASE_URL env).",
+    )
+    fmp_key: SecretStr = Field(
+        default=SecretStr(""),
+        description=(
+            "FMP-API-Key aus .env. Leer ⇒ `csp.macro_snapshot()` fällt auf "
+            "`[macro] vix_close` aus settings.toml zurück (Slice-5-Verhalten)."
+        ),
+    )
+    fmp_base_url: str = Field(
+        default=DEFAULT_FMP_BASE_URL,
+        description="FMP-API-Basis-URL (override via FMP_BASE_URL env). Stable-Namespace.",
     )
 
     @classmethod

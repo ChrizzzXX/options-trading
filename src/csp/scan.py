@@ -28,6 +28,8 @@ from csp.clients.orats import OratsClient, _redact_text
 from csp.config import Settings
 from csp.exceptions import ConfigError, ORATSDataError, ORATSEmptyDataError
 from csp.idea import _fetch_and_build_idea
+from csp.macro import _fetch_macro
+from csp.models.core import MacroSnapshot
 from csp.models.idea import Idea
 
 # Berlin-TZ für TZ-aware `as_of`-Auflösung am Public-Rand (Patch P1: ein einziger
@@ -44,6 +46,7 @@ async def _safe_fetch(
     as_of: date | None,
     effective_as_of: date,
     settings: Settings,
+    macro: MacroSnapshot,
 ) -> Idea | None:
     """Wrappt `_fetch_and_build_idea` mit der Skip-und-WARN-Semantik.
 
@@ -72,6 +75,7 @@ async def _safe_fetch(
             effective_as_of=effective_as_of,
             override=False,
             settings=settings,
+            macro=macro,
         )
     except (ORATSDataError, ORATSEmptyDataError) as exc:
         logger.warning(
@@ -106,7 +110,19 @@ async def _async_scan(
     # Insertion-Order, damit der Tie-Break stabil bleibt. Vermeidet doppelte
     # HTTP-Calls UND doppelte Ideen im Resultat.
     tickers = list(dict.fromkeys(settings.universe.allowed_tickers))
+    fmp_key = settings.fmp_key.get_secret_value()
+    if fmp_key and not fmp_key.strip():
+        fmp_key = ""
     async with httpx.AsyncClient(timeout=30.0) as client:
+        # Slice 5: Macro-Snapshot einmal fetchen — alle Universe-Tasks teilen
+        # ihn (kein VIX-Spam pro Ticker).
+        macro = await _fetch_macro(
+            settings=settings,
+            fmp_key=fmp_key,
+            fmp_base_url=settings.fmp_base_url,
+            client=client,
+            as_of=as_of,
+        )
         orats = OratsClient(client, base_url=base_url, token=token)
         tasks = [
             _safe_fetch(
@@ -117,6 +133,7 @@ async def _async_scan(
                 as_of=as_of,
                 effective_as_of=effective_as_of,
                 settings=settings,
+                macro=macro,
             )
             for ticker in tickers
         ]

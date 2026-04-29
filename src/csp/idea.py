@@ -21,6 +21,7 @@ import httpx
 from csp.clients.orats import OratsClient
 from csp.config import Settings
 from csp.exceptions import ConfigError
+from csp.macro import _fetch_macro
 from csp.models.core import MacroSnapshot, PortfolioSnapshot
 from csp.models.idea import Idea
 from csp.strategies.csp import _select_strike, build_idea
@@ -41,19 +42,22 @@ async def _fetch_and_build_idea(
     effective_as_of: date,
     override: bool,
     settings: Settings,
+    macro: MacroSnapshot,
 ) -> Idea:
     """Pro-Ticker-Orchestrator: ORATS-Fetch → Strike-Selektion → Idea-Konstruktion.
 
-    Nimmt einen vorbereiteten `OratsClient` entgegen — so kann sowohl der Single-
-    Ticker-Aufruf (`_async_idea`) als auch die Universe-Variante (`_async_scan`)
-    den HTTP-Client teilen, ohne dass diese Funktion etwas über das Lifecycle der
-    `httpx.AsyncClient`-Verbindung wissen muss.
+    Nimmt einen vorbereiteten `OratsClient` UND einen vor-gefetchten `MacroSnapshot`
+    entgegen — so kann sowohl der Single-Ticker-Aufruf (`_async_idea`) als auch die
+    Universe-Variante (`_async_scan`) HTTP-Client und Macro-Snapshot teilen.
 
     Patch P3 (Slice 4 review): Ticker wird hier zentral normalisiert (strip + upper),
     damit beide öffentlichen Pfade (`csp.idea`, `csp.scan`) dieselbe Garantie
     erhalten. `effective_as_of` wird **nicht mehr** intern via `datetime.now(...)`
     aufgelöst — der Caller liefert das schon einmal aufgelöste Datum, damit alle
     Universe-Tasks denselben Stamp tragen (Patch P1: NFR20-Determinismus).
+
+    Slice 5: `macro` wird vom Caller geliefert, damit der Universe-Scan die VIX-
+    Live-Quote genau einmal pro Run holt (statt N-mal pro Ticker).
     """
     ticker = ticker.strip().upper()
     region: Literal["US", "EU"] = "US"
@@ -65,7 +69,6 @@ async def _fetch_and_build_idea(
     strikes = await orats.strikes(ticker, trade_date=as_of)
 
     strike = _select_strike(strikes, target_delta=target_delta, dte=dte, settings=settings)
-    macro = MacroSnapshot(vix_close=settings.macro.vix_close)
     portfolio = PortfolioSnapshot()
 
     return build_idea(
@@ -101,7 +104,17 @@ async def _async_idea(
     # Effective-as_of einmal hier auflösen — single call, keine Drift möglich,
     # aber Symmetrie zur Universe-Variante (Patch P1) gewährleistet.
     effective_as_of = as_of if as_of is not None else datetime.now(_BERLIN).date()
+    fmp_key = settings.fmp_key.get_secret_value()
+    if fmp_key and not fmp_key.strip():
+        fmp_key = ""
     async with httpx.AsyncClient(timeout=30.0) as client:
+        macro = await _fetch_macro(
+            settings=settings,
+            fmp_key=fmp_key,
+            fmp_base_url=settings.fmp_base_url,
+            client=client,
+            as_of=as_of,
+        )
         orats = OratsClient(client, base_url=base_url, token=token)
         return await _fetch_and_build_idea(
             orats,
@@ -112,6 +125,7 @@ async def _async_idea(
             effective_as_of=effective_as_of,
             override=override,
             settings=settings,
+            macro=macro,
         )
 
 
