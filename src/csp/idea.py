@@ -24,6 +24,7 @@ from csp.exceptions import ConfigError
 from csp.macro import _fetch_macro
 from csp.models.core import MacroSnapshot, PortfolioSnapshot
 from csp.models.idea import Idea
+from csp.portfolio import build_portfolio_snapshot
 from csp.strategies.csp import _select_strike, build_idea
 
 # Chris' lokale Zeitzone — bewusst stdlib `ZoneInfo` statt `pendulum`, damit kein
@@ -43,6 +44,7 @@ async def _fetch_and_build_idea(
     override: bool,
     settings: Settings,
     macro: MacroSnapshot,
+    portfolio: PortfolioSnapshot,
 ) -> Idea:
     """Pro-Ticker-Orchestrator: ORATS-Fetch → Strike-Selektion → Idea-Konstruktion.
 
@@ -69,7 +71,6 @@ async def _fetch_and_build_idea(
     strikes = await orats.strikes(ticker, trade_date=as_of)
 
     strike = _select_strike(strikes, target_delta=target_delta, dte=dte, settings=settings)
-    portfolio = PortfolioSnapshot()
 
     return build_idea(
         core,
@@ -107,6 +108,9 @@ async def _async_idea(
     fmp_key = settings.fmp_key.get_secret_value()
     if fmp_key and not fmp_key.strip():
         fmp_key = ""
+    # Slice-11: Portfolio aus offenen Trades rekonstruieren (vorher: leerer
+    # `PortfolioSnapshot()`, was Pflichtregel 8 still ausser Kraft setzte).
+    portfolio = build_portfolio_snapshot(settings)
     async with httpx.AsyncClient(timeout=30.0) as client:
         macro = await _fetch_macro(
             settings=settings,
@@ -126,6 +130,7 @@ async def _async_idea(
             override=override,
             settings=settings,
             macro=macro,
+            portfolio=portfolio,
         )
 
 

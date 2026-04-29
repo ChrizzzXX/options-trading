@@ -134,6 +134,7 @@ def _idea_for_log(*, ticker: str, as_of: date) -> Idea:
         annualized_yield_pct=12.5,
         otm_pct=12.0,
         earnings_distance_days=30,
+        sector="Technology",
         under_price=100.0,
         iv_rank_1y_pct=80.0,
         current_sector_share_pct=0.0,
@@ -167,6 +168,75 @@ class TestActions:
             )
             brief = csp.daily_brief()
         assert any("Override-Trade" in a for a in brief.actions)
+
+    def test_open_position_with_imminent_earnings_warns(self, stub_settings: Settings) -> None:
+        """Slice-11 Bug 2 fix: offene Position mit `daysToNextErn` ≤ 7 → WARN.
+
+        Vorher: keine Heuristik gegen offene Positionen vor Earnings — die
+        emergency-close-Logik aus project-context.md hat nie gefeuert.
+        """
+        csp.log_trade(_idea_for_log(ticker="NOW", as_of=date(2026, 4, 28)))
+        # `daysToNextErn=3` — innerhalb der 7-Tage-emergency-close-Zone.
+        cores_imminent = {
+            "data": [
+                {
+                    "ticker": "NOW",
+                    "pxAtmIv": 100.0,
+                    "sectorName": "Technology",
+                    "mktCap": 100_000_000.0,
+                    "ivPctile1y": 80.0,
+                    "daysToNextErn": 3,
+                    "avgOptVolu20d": 120_000.0,
+                }
+            ]
+        }
+        with respx.mock(assert_all_called=False) as router:
+            router.get(re.compile(rf"^{re.escape(ORATS_BASE)}/cores")).mock(
+                return_value=httpx.Response(200, json=cores_imminent)
+            )
+            router.get(re.compile(rf"^{re.escape(ORATS_BASE)}/strikes")).mock(
+                return_value=httpx.Response(200, json=_passing_now_strikes())
+            )
+            brief = csp.daily_brief()
+        assert any("Earnings in 3 Tagen" in a and "emergency-close" in a for a in brief.actions)
+
+    def test_open_position_with_distant_earnings_no_warn(self, stub_settings: Settings) -> None:
+        """daysToNextErn = 30 → keine emergency-close-WARN."""
+        csp.log_trade(_idea_for_log(ticker="NOW", as_of=date(2026, 4, 28)))
+        with respx.mock(assert_all_called=True) as router:
+            router.get(re.compile(rf"^{re.escape(ORATS_BASE)}/cores")).mock(
+                return_value=httpx.Response(200, json=_passing_now_cores())
+            )
+            router.get(re.compile(rf"^{re.escape(ORATS_BASE)}/strikes")).mock(
+                return_value=httpx.Response(200, json=_passing_now_strikes())
+            )
+            brief = csp.daily_brief()
+        assert not any("emergency-close" in a for a in brief.actions)
+
+    def test_orats_failure_for_open_position_skips_earnings_warn(
+        self, stub_settings: Settings
+    ) -> None:
+        """Wenn ORATS für eine offene Position 4xx liefert: kein WARN-Log,
+        keine Action — kein Hard-Fail des `daily_brief`."""
+        csp.log_trade(_idea_for_log(ticker="NOW", as_of=date(2026, 4, 28)))
+        # 1. ORATS-Aufruf (für scan) liefert OK; 2. Aufruf (earnings-fetch
+        # für offene Positionen) liefert 404. respx hat eine Route je
+        # Aufruf — wir müssen `side_effect` benutzen.
+        scan_cores = httpx.Response(200, json=_passing_now_cores())
+        earnings_404 = httpx.Response(404, text="not found")
+        responses = iter([scan_cores, earnings_404])
+        with respx.mock(assert_all_called=False) as router:
+            router.get(re.compile(rf"^{re.escape(ORATS_BASE)}/cores")).mock(
+                side_effect=lambda req: next(responses)
+            )
+            router.get(re.compile(rf"^{re.escape(ORATS_BASE)}/strikes")).mock(
+                return_value=httpx.Response(200, json=_passing_now_strikes())
+            )
+            brief = csp.daily_brief()
+        # Kein emergency-close-WARN da Earnings-Distance unbekannt.
+        assert not any("emergency-close" in a for a in brief.actions)
+        # Daily-Brief hat trotzdem normal komplettiert.
+        assert isinstance(brief, DailyBrief)
 
 
 # ---------------------------------------------------------------------------

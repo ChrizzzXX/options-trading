@@ -50,6 +50,13 @@ class Idea(BaseModel):
     earnings_distance_days: int = Field(
         description="Tage bis zum nächsten Earnings (ORATS daysToNextErn)."
     )
+    sector: str = Field(
+        description=(
+            "GICS-Sektor (ORATS sectorName, z. B. 'Technology'). Slice 11: "
+            "wird vom Portfolio-Builder benutzt, um Pflichtregel-8-Sektor-Anteile "
+            "aus offenen Trades zu rekonstruieren."
+        )
+    )
     under_price: float = Field(
         gt=0.0,
         description="Spotpreis des Underlyings beim Idea-Erzeugung (ORATS pxAtmIv).",

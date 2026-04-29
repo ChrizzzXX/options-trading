@@ -98,6 +98,30 @@ class UniverseConfig(BaseModel):
         return [t.upper() for t in value]
 
 
+class PortfolioConfig(BaseModel):
+    """Portfolio-Level-Settings für Pflichtregel-8-Sektor-Cap (Slice 11).
+
+    Pflichtregel 8 (`current_share ≤ sector_cap_pct / 100`) braucht einen
+    Nenner, um aus den offenen Trades-Cash-Secured-Beträgen einen prozentualen
+    Sektor-Anteil zu berechnen. `total_csp_capital_usd` ist dieser Nenner —
+    der Gesamtbetrag, den Chris für Cash-Secured-Puts allokiert hat. Default
+    100.000 USD; via `[portfolio] total_csp_capital_usd = N` in `settings.toml`
+    oder ENV `TOTAL_CSP_CAPITAL_USD` überschreibbar.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    total_csp_capital_usd: float = Field(
+        default=100_000.0,
+        gt=0.0,
+        description=(
+            "Gesamt-CSP-Kapital in USD (Nenner für Pflichtregel-8-Sektor-Cap). "
+            "Float in Settings (TOML hat kein Decimal); Calculation-Site "
+            "konvertiert bei Bedarf in Decimal."
+        ),
+    )
+
+
 class MacroConfig(BaseModel):
     """Statische Makro-Werte (heute nur VIX-Close).
 
@@ -136,6 +160,7 @@ class Settings(BaseSettings):
     rules: RuleThresholds
     universe: UniverseConfig
     macro: MacroConfig
+    portfolio: PortfolioConfig = Field(default_factory=PortfolioConfig)
     orats_token: SecretStr = Field(
         default=SecretStr(""),
         description="ORATS-API-Token aus .env. Leer = ConfigError beim Vendor-Aufruf.",

@@ -40,7 +40,7 @@ Findings surfaced during slice review that aren't this story's problem. Each ent
 
 - **D14 — Override DuckDB persistence stub.** ~~Spec inherits the FR9 obligation~~ **Closed 2026-04-29 via slice 6 (same path as D3).** `log_idea` persists override-bypassed Ideas with `bypassed_count > 0`; the loguru WARN from slice 3 still fires alongside.
 
-- **D15 — `sector_exposure_delta_pct` requires position sizing.** FR16 says `Idea` exposes "sector-exposure delta vs current portfolio" — i.e., how much a hypothetical fill would shift the sector share. Computing the delta needs notional-per-trade, which lives in the lifecycle slice (positions + cash-secured amount). Today: `Idea.current_sector_share_pct` carries the *existing* share only. **Lands with:** lifecycle slice — add `sector_exposure_delta_pct` once `csp.log_trade` knows position sizing.
+- **D15 — `sector_exposure_delta_pct` requires position sizing.** ~~FR16 wording on "delta vs current portfolio".~~ **Closed 2026-04-29 via slice 11.** `Idea.sector` field added (populated from ORATS `core.sector`); `csp.portfolio.build_portfolio_snapshot` reconstructs `PortfolioSnapshot` from open trades + their idea-FK sectors, divided by `Settings.portfolio.total_csp_capital_usd` (new, default 100k USD). `Idea.current_sector_share_pct` is now real. The "delta if filled" computation is a trivial per-Idea arithmetic ((existing_cash + new_cash) / total - existing_share) and not currently exposed as a separate field — caller can compute. Pflichtregel 8 fires correctly now.
 
 ## From `spec-idea-singleticker.md` review (2026-04-29)
 

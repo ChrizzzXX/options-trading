@@ -56,6 +56,7 @@ def _idea(*, ticker: str = "NOW", as_of: date = date(2026, 4, 29)) -> Idea:
         annualized_yield_pct=13.92,
         otm_pct=12.0,
         earnings_distance_days=30,
+        sector="Technology",
         under_price=100.0,
         iv_rank_1y_pct=80.0,
         current_sector_share_pct=0.0,

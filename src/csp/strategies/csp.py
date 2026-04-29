@@ -177,6 +177,7 @@ def build_idea(
         annualized_yield_pct=annualized_yield_pct,
         otm_pct=otm_pct,
         earnings_distance_days=core.days_to_next_earn,
+        sector=core.sector,
         under_price=core.under_price,
         iv_rank_1y_pct=core.ivr,
         current_sector_share_pct=sector_share_pct,

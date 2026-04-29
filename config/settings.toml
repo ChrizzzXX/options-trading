@@ -32,3 +32,7 @@ allowed_tickers = [
 # Statische Makro-Werte (Platzhalter bis FMP-Client-Slice; siehe deferred-work D13).
 [macro]
 vix_close = 18.7
+
+# Slice-11 Portfolio-Settings — Nenner für Pflichtregel-8-Sektor-Cap.
+[portfolio]
+total_csp_capital_usd = 100000.0

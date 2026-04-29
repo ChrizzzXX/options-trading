@@ -27,6 +27,7 @@ def _idea(
         annualized_yield_pct=13.3,
         otm_pct=15.1,
         earnings_distance_days=86,
+        sector="Technology",
         under_price=91.84,
         iv_rank_1y_pct=96.0,
         current_sector_share_pct=38.0,

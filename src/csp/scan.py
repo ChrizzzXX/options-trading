@@ -29,8 +29,9 @@ from csp.config import Settings
 from csp.exceptions import ConfigError, ORATSDataError, ORATSEmptyDataError
 from csp.idea import _fetch_and_build_idea
 from csp.macro import _fetch_macro
-from csp.models.core import MacroSnapshot
+from csp.models.core import MacroSnapshot, PortfolioSnapshot
 from csp.models.idea import Idea
+from csp.portfolio import build_portfolio_snapshot
 
 # Berlin-TZ für TZ-aware `as_of`-Auflösung am Public-Rand (Patch P1: ein einziger
 # Datums-Stamp für alle Universe-Tasks → kein Mitternacht-Drift, NFR20).
@@ -47,6 +48,7 @@ async def _safe_fetch(
     effective_as_of: date,
     settings: Settings,
     macro: MacroSnapshot,
+    portfolio: PortfolioSnapshot,
 ) -> Idea | None:
     """Wrappt `_fetch_and_build_idea` mit der Skip-und-WARN-Semantik.
 
@@ -76,6 +78,7 @@ async def _safe_fetch(
             override=False,
             settings=settings,
             macro=macro,
+            portfolio=portfolio,
         )
     except (ORATSDataError, ORATSEmptyDataError) as exc:
         logger.warning(
@@ -113,6 +116,9 @@ async def _async_scan(
     fmp_key = settings.fmp_key.get_secret_value()
     if fmp_key and not fmp_key.strip():
         fmp_key = ""
+    # Slice-11: Portfolio einmal aus DuckDB rekonstruieren — alle Universe-Tasks
+    # teilen ihn (kein N+1-DB-Query pro Ticker).
+    portfolio = build_portfolio_snapshot(settings)
     async with httpx.AsyncClient(timeout=30.0) as client:
         # Slice 5: Macro-Snapshot einmal fetchen — alle Universe-Tasks teilen
         # ihn (kein VIX-Spam pro Ticker).
@@ -134,6 +140,7 @@ async def _async_scan(
                 effective_as_of=effective_as_of,
                 settings=settings,
                 macro=macro,
+                portfolio=portfolio,
             )
             for ticker in tickers
         ]

@@ -105,6 +105,7 @@ def make_idea() -> Callable[..., Idea]:
             annualized_yield_pct=yield_pct,
             otm_pct=10.0,
             earnings_distance_days=30,
+            sector="Technology",
             under_price=110.0,
             iv_rank_1y_pct=80.0,
             current_sector_share_pct=0.0,
