@@ -18,6 +18,7 @@ from csp.exceptions import (
     ORATSEmptyDataError,
     PflichtregelError,
 )
+from csp.export import export_to_sheets
 from csp.filters.pflichtregeln import passes_csp_filters
 from csp.health import fmp_health_check, orats_health_check
 from csp.idea import idea
@@ -62,6 +63,7 @@ __all__ = [
     "TradeStatus",
     "close_trade",
     "daily_brief",
+    "export_to_sheets",
     "fmp_health_check",
     "get_idea",
     "idea",

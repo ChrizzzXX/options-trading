@@ -163,6 +163,13 @@ class Settings(BaseSettings):
             "via DUCKDB_PATH env."
         ),
     )
+    google_sheet_id: str = Field(
+        default="",
+        description=(
+            "Google-Sheets-Spreadsheet-ID für `csp.export_to_sheets()` (Slice 10). "
+            "Leer ⇒ ConfigError beim Export-Aufruf. Override via GOOGLE_SHEET_ID env."
+        ),
+    )
 
     @classmethod
     def load(cls, path: Path | str = DEFAULT_SETTINGS_PATH) -> Settings:
