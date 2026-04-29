@@ -1,11 +1,17 @@
-"""Tests für die Pydantic-Validatoren auf den Datenträgern (P2/P3/P5/P10)."""
+"""Tests für die Pydantic-Validatoren auf den Datenträgern (P2/P3/P5/P10).
+
+Slice-9-Härtung (D5/D27): zusätzlich `TestFiniteValidators` für NaN/±Inf-Refusal
+auf jedem numerischen Feld von `MacroSnapshot` / `OratsCore` / `OratsStrike`.
+"""
 
 from __future__ import annotations
+
+import math
 
 import pytest
 from pydantic import ValidationError
 
-from csp.models.core import OratsCore, OratsStrike
+from csp.models.core import MacroSnapshot, OratsCore, OratsStrike
 
 _VALID_CORE_KW: dict[str, object] = {
     "ticker": "NOW",
@@ -87,3 +93,69 @@ class TestOratsStrikeValidators:
         """put_bid == 0 ist zulässig (illiquide Optionen, kein Crossed)."""
         strike = OratsStrike(**{**_VALID_STRIKE_KW, "put_bid": 0.0, "put_ask": 0.10})
         assert strike.put_bid == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Slice-9-Härtung — finite-Validators auf allen numerischen Feldern (D5/D27).
+# ---------------------------------------------------------------------------
+
+
+_NON_FINITE = [float("nan"), float("inf"), float("-inf")]
+
+
+class TestFiniteValidators:
+    """Stellt sicher, dass NaN und ±Inf an der Vendor-Grenze abgelehnt werden.
+
+    Sort-Reihenfolge in `csp.scan` und Pflichtregeln-Vergleiche dürfen keine
+    nicht-finiten Floats sehen — sonst wird NFR20 (Determinismus) und das
+    Ranking-Verhalten unbestimmt.
+    """
+
+    @pytest.mark.parametrize("bad", _NON_FINITE)
+    def test_macro_vix_close_finite(self, bad: float) -> None:
+        with pytest.raises(ValidationError, match="nicht finite"):
+            MacroSnapshot(vix_close=bad)
+
+    @pytest.mark.parametrize(
+        "field", ["under_price", "mkt_cap_thousands", "ivr", "avg_opt_volu_20d"]
+    )
+    @pytest.mark.parametrize("bad", _NON_FINITE)
+    def test_orats_core_numeric_finite(self, field: str, bad: float) -> None:
+        # Bestimmte Felder haben zusätzliche Bounds-Checks (gt/ge/le), die VOR
+        # unserem finite-Validator an pydantic ausgelöst werden — wir akzeptieren
+        # jeden ValidationError, Hauptsache der Wert wird abgelehnt. Der finite-
+        # Validator deckt die "kein anderer Schutz greift"-Felder ab
+        # (mkt_cap_thousands, ivr, avg_opt_volu_20d ohne gt/ge).
+        with pytest.raises(ValidationError):
+            OratsCore(**{**_VALID_CORE_KW, field: bad})
+
+    @pytest.mark.parametrize("field", ["strike", "delta", "put_ask", "put_bid"])
+    @pytest.mark.parametrize("bad", _NON_FINITE)
+    def test_orats_strike_numeric_finite(self, field: str, bad: float) -> None:
+        # `delta` hat `ge=-1.0, le=0.0`; `put_*` haben Crossed-Quotes-Check.
+        # Pure-finite-Validator-Treffer auf `strike` (keine andere Bounds-Regel).
+        with pytest.raises(ValidationError):
+            OratsStrike(**{**_VALID_STRIKE_KW, field: bad})
+
+    @pytest.mark.parametrize("bad", _NON_FINITE)
+    def test_strike_finite_validator_specifically_fires(self, bad: float) -> None:
+        """Pinnt, dass `strike` keinen anderen Bounds-Check hat — der finite-
+        Validator IST hier die einzige Verteidigung."""
+        with pytest.raises(ValidationError, match="nicht finite"):
+            OratsStrike(**{**_VALID_STRIKE_KW, "strike": bad})
+
+    @pytest.mark.parametrize("field", ["mkt_cap_thousands", "ivr", "avg_opt_volu_20d"])
+    @pytest.mark.parametrize("bad", _NON_FINITE)
+    def test_core_finite_validator_specifically_fires(self, field: str, bad: float) -> None:
+        """Felder ohne gt/ge — finite-Validator ist die einzige Verteidigung."""
+        with pytest.raises(ValidationError, match="nicht finite"):
+            OratsCore(**{**_VALID_CORE_KW, field: bad})
+
+    def test_finite_floats_pass(self) -> None:
+        """Smoke: gültige finite-Werte werden nicht abgelehnt."""
+        macro = MacroSnapshot(vix_close=18.7)
+        assert math.isfinite(macro.vix_close)
+        core = OratsCore(**_VALID_CORE_KW)
+        assert math.isfinite(core.under_price)
+        strike = OratsStrike(**_VALID_STRIKE_KW)
+        assert math.isfinite(strike.delta)

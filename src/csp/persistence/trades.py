@@ -1,4 +1,4 @@
-"""`trades`-Tabelle CRUD (Slice 6).
+"""`trades`-Tabelle CRUD (Slice 6, Slice-9-Härtung).
 
 `insert_trade` ist `INSERT OR REPLACE` — idempotent. `update_trade` setzt nur
 Status / `close_*` / `pnl` / `notes` / `updated_at`; `inserted_at` und alle
@@ -6,15 +6,24 @@ Open-Felder bleiben unangetastet.
 
 Die `lifecycle_api`-Schicht orchestriert State-Machine-Validierung VOR DB-Calls;
 diese Funktionen sind dumme Daten-Dippers und kennen keine Transition-Regeln.
+
+Slice-9-Härtung (D36): `_row_to_trade` benutzte vier `# type: ignore`-
+Kommentare, weil `duckdb.DuckDBPyConnection.execute(...).fetchone()` als
+`tuple[object, ...]` typisiert ist. Ersetzt durch `typing.cast` plus
+defensive `isinstance`-Checks an den Boundary-Spalten — jeder fehlerhafte
+Schema-Drift fällt jetzt mit einer klaren `LifecycleError` auf statt
+mit einer pydantic-Fehlermeldung tief in der Modellkonstruktion.
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
+from typing import cast
 
 import duckdb
 
+from csp.exceptions import LifecycleError
 from csp.lifecycle.state_machine import TradeStatus
 from csp.models.trade import Trade
 
@@ -148,23 +157,70 @@ def find_open_trade_by_idea(
 
 
 def _row_to_trade(row: tuple[object, ...]) -> Trade:
-    """DuckDB-Row → Pydantic-`Trade`. Decimal-Felder bleiben als Decimal erhalten."""
-    # DuckDB-Rows sind statisch `tuple[object, ...]` — wir wissen aus dem
-    # Schema, dass die Spalten passend sind. Pydantic-Validators an der
-    # `Trade`-Modell-Konstruktion fangen jede Schema-Drift auf.
+    """DuckDB-Row → Pydantic-`Trade`. Decimal-Felder bleiben als Decimal erhalten.
+
+    Defensive Schema-Boundary: jede Spalte mit nicht-trivialem Python-Typ
+    (`int`, `date`, `datetime`) wird per `isinstance` gecheckt — bei Drift
+    fliegt eine klare `LifecycleError` statt einer kryptischen pydantic-Message.
+
+    Strings + Decimals gehen über `str(...)` durch (DuckDB liefert
+    `decimal.Decimal` bereits direkt; `str(...)` ist idempotent für sie).
+    """
+    # Schema-Erwartungen aus 001_initial.sql:
+    # 0 trade_id TEXT | 1 idea_id TEXT | 2 ticker TEXT | 3 status TEXT
+    # 4 contracts INTEGER | 5 open_date DATE | 6 open_premium DECIMAL
+    # 7 cash_secured DECIMAL | 8 close_date DATE NULL | 9 close_premium DECIMAL NULL
+    # 10 pnl DECIMAL NULL | 11 notes TEXT NULL | 12 inserted_at TIMESTAMP
+    # 13 updated_at TIMESTAMP
+    contracts_raw = row[4]
+    if not isinstance(contracts_raw, int):
+        raise LifecycleError(
+            f"Schema-Drift: trades.contracts ist {type(contracts_raw).__name__}, "
+            f"erwartet `int`. Migration `001_initial.sql` aktuell?"
+        )
+    open_date_raw = row[5]
+    if not isinstance(open_date_raw, date):
+        raise LifecycleError(
+            f"Schema-Drift: trades.open_date ist {type(open_date_raw).__name__}, "
+            f"erwartet `datetime.date`."
+        )
+    inserted_at_raw = row[12]
+    updated_at_raw = row[13]
+    if not isinstance(inserted_at_raw, datetime):
+        raise LifecycleError(
+            f"Schema-Drift: trades.inserted_at ist {type(inserted_at_raw).__name__}, "
+            f"erwartet `datetime`."
+        )
+    if not isinstance(updated_at_raw, datetime):
+        raise LifecycleError(
+            f"Schema-Drift: trades.updated_at ist {type(updated_at_raw).__name__}, "
+            f"erwartet `datetime`."
+        )
+    close_date_raw = row[8]
+    close_date_typed: date | None
+    if close_date_raw is None:
+        close_date_typed = None
+    elif isinstance(close_date_raw, date):
+        close_date_typed = close_date_raw
+    else:
+        raise LifecycleError(
+            f"Schema-Drift: trades.close_date ist {type(close_date_raw).__name__}, "
+            f"erwartet `datetime.date` oder NULL."
+        )
+
     return Trade(
         trade_id=str(row[0]),
         idea_id=str(row[1]),
         ticker=str(row[2]),
-        status=TradeStatus(str(row[3])),
-        contracts=int(row[4]),  # type: ignore[call-overload]  # DuckDB INT → int
-        open_date=row[5],  # type: ignore[arg-type]
+        status=TradeStatus(cast(str, row[3])),
+        contracts=contracts_raw,
+        open_date=open_date_raw,
         open_premium=Decimal(str(row[6])),
         cash_secured=Decimal(str(row[7])),
-        close_date=row[8],  # type: ignore[arg-type]
+        close_date=close_date_typed,
         close_premium=None if row[9] is None else Decimal(str(row[9])),
         pnl=None if row[10] is None else Decimal(str(row[10])),
         notes=None if row[11] is None else str(row[11]),
-        inserted_at=row[12],  # type: ignore[arg-type]
-        updated_at=row[13],  # type: ignore[arg-type]
+        inserted_at=inserted_at_raw,
+        updated_at=updated_at_raw,
     )

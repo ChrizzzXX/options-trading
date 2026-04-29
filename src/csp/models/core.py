@@ -17,11 +17,31 @@ Vendor-Gotchas (siehe project-context.md):
 - `/hist/strikes` liefert die Felder `putBidPrice`/`putAskPrice` und `delta`
   (Call-Delta — Put-Delta = `delta - 1`); Aufrufer berechnet das Put-Delta
   vor der Modell-Konstruktion oder übergibt es explizit.
+
+Slice-9-Härtung (D5 + D27): jedes numerische Feld bekommt einen
+`@field_validator` mit ``math.isfinite`` — NaN und ±Inf scheitern an der
+Vendor-Grenze. Folge: Pflichtregeln-Vergleiche und Sort-Schlüssel sehen
+nie nicht-finite Floats; NFR20-Determinismus ist transitiv abgesichert.
 """
 
 from __future__ import annotations
 
+import math
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+def _require_finite(value: float, *, field: str) -> float:
+    """Pflichtregel-Härtung: NaN / ±Inf ablehnen, Wert sonst durchreichen.
+
+    NaN-Vergleiche sind in Python nondeterministisch (jeder NaN-Vergleich = False),
+    Inf bricht alle Top-N-Sortierungen. Beides darf nie aus der Vendor-Antwort
+    in die Domain-Logik. Pydantic hat keinen built-in `assert_finite` — daher
+    diese kleine Helper-Funktion, an jedem numerischen Feld als Validator.
+    """
+    if not math.isfinite(value):
+        raise ValueError(f"{field}={value!r} ist nicht finite (NaN/Inf abgelehnt)")
+    return value
 
 
 class OratsCore(BaseModel):
@@ -65,6 +85,12 @@ class OratsCore(BaseModel):
         """Ticker werden uppercase normalisiert, damit Pflichtregel 9 case-insensitiv prüft."""
         return value.upper()
 
+    @field_validator("under_price", "mkt_cap_thousands", "ivr", "avg_opt_volu_20d")
+    @classmethod
+    def _finite(cls, value: float, info: object) -> float:
+        # Slice-9-Härtung (D5/D27): NaN/±Inf am Vendor-Rand ablehnen.
+        return _require_finite(value, field=getattr(info, "field_name", "<unknown>"))
+
 
 class OratsStrike(BaseModel):
     """Per-Strike-Kennzahlen aus ORATS /strikes oder /hist/strikes (Put-Seite)."""
@@ -96,6 +122,12 @@ class OratsStrike(BaseModel):
             )
         return self
 
+    @field_validator("strike", "delta", "put_ask", "put_bid")
+    @classmethod
+    def _finite(cls, value: float, info: object) -> float:
+        # Slice-9-Härtung (D5/D27): NaN/±Inf am Vendor-Rand ablehnen.
+        return _require_finite(value, field=getattr(info, "field_name", "<unknown>"))
+
 
 class MacroSnapshot(BaseModel):
     """Makro-Kontext (heute nur VIX-Close — der einzige Wert für Pflichtregel 1)."""
@@ -103,6 +135,12 @@ class MacroSnapshot(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     vix_close: float
+
+    @field_validator("vix_close")
+    @classmethod
+    def _finite(cls, value: float) -> float:
+        # Slice-9-Härtung (D5/D27): NaN/±Inf am Macro-Rand ablehnen.
+        return _require_finite(value, field="vix_close")
 
 
 class PortfolioSnapshot(BaseModel):
