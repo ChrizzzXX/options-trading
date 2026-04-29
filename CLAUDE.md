@@ -4,10 +4,11 @@ Python research library for German Cash-Secured-Put options trading. Solo projec
 
 ## Read these first (in this order)
 
-1. **PRD** — `_bmad-output/planning-artifacts/prd.md` — authoritative product spec (42 FRs, 39 NFRs, 740 lines).
-2. **Project Context** — `_bmad-output/project-context.md` — 178 implementation rules (tech stack, conventions, vendor gotchas, the 9 Pflichtregeln). Load before writing code.
-3. **Active spec(s)** — `_bmad-output/implementation-artifacts/spec-*.md` — current work in flight.
-4. **Legacy brief (archived)** — `docs/archive/Projekt-Brief-2026-04-27.md` — superseded by PRD; reference only.
+1. **Shakedown plan (active)** — `_bmad-output/planning-artifacts/shakedown-plan-2026-04-29.md` — the next session is dedicated to this. Track A (single-session simulation) or Track B (1-2 week real-world) plus 6 targeted probes. Output is a friction log that drives slice 12+.
+2. **PRD** — `_bmad-output/planning-artifacts/prd.md` — authoritative product spec (42 FRs, 39 NFRs, 740 lines).
+3. **Project Context** — `_bmad-output/project-context.md` — 178 implementation rules (tech stack, conventions, vendor gotchas, the 9 Pflichtregeln). Load before writing code.
+4. **Active spec(s)** — `_bmad-output/implementation-artifacts/spec-*.md` — current work in flight.
+5. **Legacy brief (archived)** — `docs/archive/Projekt-Brief-2026-04-27.md` — superseded by PRD; reference only.
 
 When PRD, project-context, and a spec disagree: **PRD wins, then project-context, then spec.** Surface the conflict to Chris before proceeding.
 
@@ -34,24 +35,22 @@ PRD has 10 public library functions; **all 10 done**: `passes_csp_filters`, `ide
 
 ## Next slice (recommended)
 
-MVP feature-complete + 2 silent correctness bugs caught + fixed. From here, three reasonable directions:
+**Run the shakedown plan first.** `_bmad-output/planning-artifacts/shakedown-plan-2026-04-29.md` is the binding work for the next session. It defines Track A (1-2 hour simulation), Track B (1-2 week real-world routine), 6 targeted probes (Pflichtregel #8 stress, IVR-leg behavior, override audit trail, settings-tweak determinism, DuckDB invariants, vendor-failure resilience), and the friction-log format that becomes slice-12 input.
 
-**A) Daily-driver shakedown.** Use the library for one or two real CSP-decision sessions and surface what doesn't feel right. The 10 functions work in unit tests + are now correct against the two known-bad paths from slice 11. The live conversation flow — `daily_brief()` → review → `log_trade(idea)` → next morning `close_trade(...)` → `export_to_sheets()` — has only been smoke-tested. Friction points discovered here drive the highest-value polish items.
+After the shakedown the recommendation depends on what the friction log shows:
 
-**B) Continue hardening.** Active deferred items still worth doing:
+- **Friction log has blockers** → fix-first slice 12.
+- **Friction log has majors only** → triage + slice 12 prioritized accordingly.
+- **Friction log is clean** → declare MVP production-ready and move to Growth-phase scope (Wheel covered-call lifecycle D32, Iron Condor / Strangle plugins, scheduled cron, Hormuz special-rules).
+
+Other deferred items still worth doing if the shakedown is clean:
 - D21, D23 — `pytest-benchmark` smoke for NFR1/NFR4 (≤ 60 s scan, ≤ 5 s idea).
 - D26 — `gather` poison-pill (defer until first leak).
 - D37 — SQL parser robustness (defer until first DML migration).
 - D38 — `daily_brief` N+1 (defer until > 20 open positions).
 - D39 — markdown templates (defer until Sheets/PDF needed).
 
-**C) Growth-phase scope expansion.** Things deliberately left out of MVP:
-- Wheel covered-call lifecycle (D32 — assigned → CC open).
-- Iron Condor / Strangle strategy plugins (`AbstractStrategy` base).
-- Scheduled background `daily_brief` via cron / `/loop`.
-- Hormuz Special-Regelwerk (master-investmentliste tickers).
-
-To start: run `/bmad-quick-dev` in a fresh session and reference this CLAUDE.md + `deferred-work.md`. **Active D-numbers:** D2, D4, D6–D11, D15–D17 (D17 partial), D18–D21, D23–D26, D28, D32–D35, D37–D39. **Closed/rejected:** D1, D3, D5, D12–D14, D22, D27, D29, D30, D31, D36, D40.
+To start the next session: open Claude Code in this repo, point it at `_bmad-output/planning-artifacts/shakedown-plan-2026-04-29.md`, and say "run me through Track A". **Active D-numbers:** D2, D4, D6–D11, D16–D17 (D17 partial), D18–D21, D23–D26, D28, D32–D35, D37–D39. **Closed/rejected:** D1, D3, D5, D12–D15, D22, D27, D29, D30, D31, D36, D40.
 
 ## Hard rules (don't violate without explicit human approval)
 
