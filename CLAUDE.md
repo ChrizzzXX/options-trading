@@ -11,35 +11,39 @@ Python research library for German Cash-Secured-Put options trading. Solo projec
 
 When PRD, project-context, and a spec disagree: **PRD wins, then project-context, then spec.** Surface the conflict to Chris before proceeding.
 
-## State as of 2026-04-29 (after slice 7)
+## State as of 2026-04-29 (after slice 9 — hardening)
 
-Seven slices shipped on `main` (`https://github.com/ChrizzzXX/options-trading.git`, **private repo**). Slices 4-7 not pushed at the time of this handoff (most recent commit `94cd4e2`).
+Nine slices shipped on `origin/main` (`https://github.com/ChrizzzXX/options-trading.git`, **private repo**). All commits pushed; tree clean.
 
-- **Slice 1 — Pflichtregeln gate + bootstrap** (`spec-pflichtregeln-gate.md`, `done`). Public surface: `csp.passes_csp_filters`, `Settings`, 4 models, exceptions. 100 % on `pflichtregeln.py`.
-- **Slice 2 — ORATS client + NOW cassette** (`spec-orats-client.md`, `done`). Adds `csp.OratsClient`, `csp.orats_health_check`. 100 % on `clients/orats.py`. Closed D1.
-- **Slice 3 — `csp.idea(...)` single-ticker** (`spec-idea-singleticker.md`, `done`). Adds `csp.idea`, `csp.Idea`. **Amended PRD FR13** to always-`Idea` (override-pathway on the model). 100 % on slice files.
-- **Slice 4 — `csp.scan(...)` universe scan** (`spec-scan-universe.md`, `done`, `bfceb53`). Adds `csp.scan(max_results=10, *, dte=45, target_delta=-0.20, as_of=None) -> list[Idea]`. Single shared `httpx.AsyncClient` + `OratsClient`, `asyncio.gather()` (NFR5), per-ticker skip-and-WARN, dedupe, ranked yield-DESC + ticker-ASC (NFR20). No `strategy` / `override` params.
-- **Slice 5 — FMP client + live macro** (`spec-fmp-client.md`, `done`, `e4ffd1e`). Adds `csp.FmpClient`, `csp.fmp_health_check`, `csp.macro_snapshot`, `FMPDataError` / `FMPEmptyDataError`. `csp.idea` + `csp.scan` upgrade transparently to live VIX when `FMP_KEY` is set; settings fallback otherwise. Closes D13, partially D17.
-- **Slice 6 — DuckDB lifecycle persistence** (`spec-lifecycle-persistence.md`, `done`, `35113f6`). Adds `csp.log_trade`, `csp.close_trade`, `csp.list_open_positions`, `csp.get_idea`, `csp.list_ideas`, `csp.log_idea`, `csp.Trade`, `csp.TradeStatus`, `csp.LifecycleError`. New `lifecycle/state_machine.py` (100 % coverage gate, MVP scope: manual entry only, `take_profit_pending` sole intermediate, `assigned`/`closed_*`/`emergency_close` terminal). Numbered SQL migrations in `persistence/migrations/`. Idempotent `INSERT OR REPLACE`. Closes D3, D14.
-- **Slice 7 — `csp.daily_brief()` + `Idea.format_fbg_mail()`** (`spec-daily-brief.md`, `done`, `94cd4e2`). Composes `macro_snapshot + scan + list_open_positions` plus deutsche action-strings (Earnings ≤ 8d, Sektor-Anteil > 50 %, Override-Trade-Audit). New `csp.ui.formatters` (German-locale `format_usd` / `format_pct` / `format_date_de`). `Idea` extended with `under_price` + `iv_rank_1y_pct`. `DailyBrief.to_markdown()` renders §7.2 sketch as ASCII pipe-tables. Closes D12.
+- **Slice 1-3** — Pflichtregeln gate, ORATS client (with NOW cassette), `csp.idea(...)`. Closed D1.
+- **Slice 4** — `csp.scan(...)` universe scan (`bfceb53`). FR14/FR17/NFR5/NFR20.
+- **Slice 5** — FMP client + `csp.macro_snapshot()` (`e4ffd1e`). Closes D13, partially D17.
+- **Slice 6** — DuckDB lifecycle: `log_trade`, `close_trade`, `list_open_positions`, `get_idea`, `list_ideas`, `log_idea` + state machine (`35113f6`). Closes D3, D14.
+- **Slice 7** — `csp.daily_brief()` + `Idea.format_fbg_mail()` + `csp.ui.formatters` (`94cd4e2`). Closes D12.
+- **Slice 8** — IVolatility integration **REJECTED** (`7da5b5e` scope amendment). Probe established Chris's IV plan-tier doesn't include `/equities/eod/options-rawiv` (the only chain endpoint). EU coverage out of scope (MVP and Growth). D22, D30, D40 marked rejected. Forward-compat fields (`region`, `data_freshness`) stay on models.
+- **Slice 8b** — FMP base-URL bugfix + real cassettes (`06dc456`). Slice 5 had `https://financialmodelingprep.com/api/stable/...` which is now legacy 403'd; correct is `https://financialmodelingprep.com/stable/...`. Real `^VIX = 18.01` (live) and `18.71` (2026-04-24) cassettes recorded, scrubbed, played back. Closes D29.
+- **Slice 9** — Hardening pass (`6fb0a26`). Finite validators (`math.isfinite`) on every numeric field of `MacroSnapshot`/`OratsCore`/`OratsStrike` reject NaN/±Inf at the vendor boundary. `_row_to_trade` typing tightened: four `# type: ignore` comments replaced by defensive `isinstance` checks; schema drift raises a clear `LifecycleError` instead of a cryptic pydantic message. Closes D5, D27, D36.
 
-Tests: **321 default + 3 opt-in `recording`**. Overall coverage 99.25 %. ruff + ruff-format + mypy --strict + pytest all clean.
+Tests: **363 default + 5 opt-in `recording`**. Overall coverage 98.82 %. ruff + ruff-format + mypy --strict + pytest all clean.
 
-PRD has 10 public library functions; **9 done**: `passes_csp_filters`, `idea`, `scan`, `macro_snapshot`, `log_trade`, `close_trade`, `list_open_positions`, `get_idea`, `list_ideas`, `daily_brief`. **1 to go**: `export_to_sheets` (deferred via D31 — needs Google service account at `~/.config/csp/sa.json`).
+PRD has 10 public library functions; **9 done**: `passes_csp_filters`, `idea`, `scan`, `macro_snapshot`, `log_trade`, `close_trade`, `list_open_positions`, `get_idea`, `list_ideas`, `daily_brief`. **1 to go**: `export_to_sheets` (D31 — Chris confirmed full Google Drive access is set up; needs implementation).
 
 **Reconciliation truth:** `pytest -k now_regression` (PRD FR29 / NFR18) asserts real NOW-78 on 2026-04-24 **fails 3 of 9 rules** (DTE 56, earnings same day, spread 0.15 USD). Chris confirmed: `override=True` is routine practice. Slice 3 pinned the override-pathway design: rules 1, 3-9 are bypass-able via `override=True`; **Rule 2 (delta band) is structurally unbypassable** because `_select_strike` pre-filters by the band — to take a Rule-2-violating idea, relax `delta_min`/`delta_max` in `settings.toml` for that run.
 
 ## Next slice (recommended)
 
-The MVP is essentially feature-complete. Three reasonable directions:
+The MVP is feature-complete except for `csp.export_to_sheets`. Two reasonable directions:
 
-**A) `csp.export_to_sheets()` (closes D31; last of the 10 PRD functions).** Needs Google service-account JSON at `~/.config/csp/sa.json` and `Settings.google_sheet_id` + `Settings.google_sa_path`. Implement against `gspread` + `google-auth`; NFR6 fire-and-forget, must not block daily-brief. Without real credentials end-to-end testing is shallow — synthesize `gspread` mocks for `respx`-equivalent verification.
+**A) `csp.export_to_sheets()` — last of the 10 PRD functions (closes D31).** Chris confirmed full Google Drive + Sheets access is set up. Implement against `gws-sheets` skills (preferred) or `gspread` + `google-auth` directly. Single tab "Ideas" per PRD §5.2 (US-only after the EU scope amendment). NFR6: fire-and-forget, must not block daily-brief. Settings additions: `google_sheet_id` (env var), `google_sa_path` (default `~/.config/csp/sa.json`).
 
-**B) IVolatility client slice (closes D22, D30).** Activates EU dispatch on `csp.scan`. Project-context.md forbids docs-only Pydantic models — first step must be a recording cassette via `csp.iv_health_check("ALV.DE")` against the real API. Requires `IVOLATILITY_API_KEY` in `.env`. Reshape universe loader to `list[UniverseEntry(ticker, region, vendor_symbol)]`.
+**B) Continue hardening.** Active deferred items still worth doing:
+- D21, D23 — `pytest-benchmark` smoke for NFR1/NFR4 (≤ 60 s scan, ≤ 5 s idea).
+- D26 — `gather` poison-pill (defer until first leak).
+- D37 — SQL parser robustness (defer until first DML migration).
+- D38 — `daily_brief` N+1 (defer until > 20 open positions).
+- D39 — markdown templates (defer until Sheets/PDF needed).
 
-**C) Hardening / review pass.** No new features; instead ramp coverage strictness, write a `pytest-benchmark` for NFR1/NFR4 (closes D21, D23), record the FMP cassette (closes D29), tighten the `_row_to_trade` typing (D36), add `validate_finite` validators on `MacroSnapshot`/`OratsCore`/`OratsStrike` (D5, D27).
-
-To start: run `/bmad-quick-dev` in a fresh session and reference this CLAUDE.md, the PRD (FR-NFR6 for Sheets; FR2 + NFR9 for IVolatility), and `_bmad-output/implementation-artifacts/deferred-work.md`. Active D-numbers: D2, D4–D11, D15–D24, D25–D40 (D1, D3, D12, D13, D14 closed).
+To start: run `/bmad-quick-dev` in a fresh session and reference this CLAUDE.md plus PRD §5.2 (Sheets) or `deferred-work.md`. **Active D-numbers:** D2, D4, D6–D11, D15–D17 (D17 partial), D18–D21, D23–D26, D28, D29 (closed), D31, D32–D35, D37–D39. **Closed:** D1, D3, D5, D12–D14, D22, D27, D29, D30, D36, D40.
 
 ## Hard rules (don't violate without explicit human approval)
 
